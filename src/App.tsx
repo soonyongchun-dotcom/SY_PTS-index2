@@ -1073,24 +1073,14 @@ export default function App() {
               >
                 뒤로가기 (Back)
               </Button>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  onClick={handleResetSession}
-                  color="secondary"
-                  variant="contained"
-                  size="small"
-                >
-                  새로운 퍼팅 (New Putting)
-                </Button>
-                <Button
-                  onClick={handleEndPractice}
-                  color="error"
-                  variant="contained"
-                  size="small"
-                >
-                  연습 종료 (End Practice)
-                </Button>
-              </Box>
+              <Button
+                onClick={handleEndPractice}
+                color="error"
+                variant="contained"
+                size="small"
+              >
+                연습 종료 (End Practice)
+              </Button>
             </Box>
             <PuttingPracticeForm onSubmit={handlePractice} />
           </CardContent>
@@ -1251,7 +1241,15 @@ export default function App() {
                           <Box
                             component="th"
                             key={cond}
-                            sx={{ border: '1px solid rgba(0,0,0,0.15)', p: 1, textAlign: 'center' }}
+                            sx={{
+                              border: '1px solid rgba(0,0,0,0.15)',
+                              p: 1,
+                              textAlign: 'center',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              maxWidth: 120,
+                            }}
                           >
                             {cond}
                           </Box>
@@ -1279,6 +1277,9 @@ export default function App() {
                                   textAlign: 'center',
                                   fontSize: '0.85rem',
                                   minWidth: 80,
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
                                 }}
                               >
                                 <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>
