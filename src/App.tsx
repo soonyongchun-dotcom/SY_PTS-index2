@@ -437,6 +437,58 @@ export default function App() {
     XLSX.writeFile(workbook, `${base}.xlsx`);
   };
 
+  const importFromExcel = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls';
+    input.onchange = e => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = reader.result;
+          if (!data) return;
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+          const parsedPractices: Practice[] = rows
+            .map(row => {
+              const distanceRaw = row['거리'] ?? row['Distance'] ?? row['distance'];
+              const result = row['결과'] ?? row['Result'] ?? row['result'];
+              const conditionsRaw = row['조건'] ?? row['Condition'] ?? row['condition'];
+              const timeRaw = row['시간'] ?? row['Time'] ?? row['time'];
+
+              if (!distanceRaw || !result) return null;
+              const distance = String(distanceRaw).replace(/\s*yd\s*$/i, '').trim();
+              const conditions = String(conditionsRaw ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
+              const time = timeRaw ? new Date(String(timeRaw)) : new Date();
+              return {
+                distance,
+                conditions,
+                result: String(result),
+                time,
+              } as Practice;
+            })
+            .filter(Boolean) as Practice[];
+
+          if (parsedPractices.length === 0) {
+            alert('엑셀에서 유효한 퍼팅 기록을 찾을 수 없습니다. (No valid putting records found in Excel.)');
+            return;
+          }
+
+          setPractices(prev => [...prev, ...parsedPractices]);
+          alert(`엑셀 데이터를 불러왔습니다: ${parsedPractices.length}개 항목 추가되었습니다.`);
+        } catch {
+          alert('엑셀 파일을 읽는 중 오류가 발생했습니다. (Failed to read Excel file.)');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+    input.click();
+  };
+
   const HEADER_HEIGHT = 64;
 
   const Header = () => (
@@ -829,6 +881,9 @@ export default function App() {
                 </IconButton>
                 <IconButton onClick={exportToExcel} size="small" title="Excel로 저장">
                   <DownloadIcon />
+                </IconButton>
+                <IconButton onClick={importFromExcel} size="small" title="Excel 불러오기">
+                  <UploadFileIcon />
                 </IconButton>
               </Box>
             </Box>
