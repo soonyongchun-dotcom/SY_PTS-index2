@@ -447,65 +447,6 @@ export default function App() {
     return (
       <Box sx={{ pt: '84px', minHeight: '100vh', background: 'rgba(255,255,255,0.85)' }}>
         <Header />
-        {user?.isAdmin && (
-          <Box sx={{ position: 'fixed', top: HEADER_HEIGHT + 8, right: 16, zIndex: 1400, display: 'flex', gap: 1 }}>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={() => setOpenManager(true)}
-            >
-              선수관리 (Player Manager)
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => {
-                const data = JSON.stringify(managedUsers, null, 2);
-                const blob = new Blob([data], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'managedUsers.json';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-              }}
-            >
-              내보내기 (Export)
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'application/json';
-                input.onchange = e => {
-                  const file = (e.target as HTMLInputElement).files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    try {
-                      const parsed = JSON.parse(reader.result as string);
-                      if (Array.isArray(parsed)) {
-                        setManagedUsers(parsed);
-                        localStorage.setItem('managedUsers', JSON.stringify(parsed));
-                      }
-                    } catch {
-                      // ignore
-                    }
-                  };
-                  reader.readAsText(file);
-                };
-                input.click();
-              }}
-            >
-              불러오기 (Import)
-            </Button>
-          </Box>
-        )}
         <Container maxWidth="xs" sx={{ mt: 2 }}>
           <GreenSpeedForm onNext={setGreenSpeed} />
         </Container>
