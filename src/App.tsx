@@ -76,6 +76,7 @@ export default function App() {
   const [showVisualization, setShowVisualization] = useState(false);
   const [compareSessionDates, setCompareSessionDates] = useState<string[]>([]);
   const [sessionFilter, setSessionFilter] = useState('');
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [selectedManagedUser, setSelectedManagedUser] = useState<string | null>(null);
   const [selectedUserSessions, setSelectedUserSessions] = useState<StoredSession[]>([]);
   const [openSessionDialog, setOpenSessionDialog] = useState(false);
@@ -118,8 +119,11 @@ export default function App() {
   };
 
   const fetchSessionsFromServer = async (userId: string): Promise<StoredSession[]> => {
+    if (!authToken) return [];
     try {
-      const resp = await fetch(`/api/sessions?userId=${encodeURIComponent(userId)}`);
+      const resp = await fetch(`/api/sessions?userId=${encodeURIComponent(userId)}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
       if (!resp.ok) return [];
       const data = (await resp.json()) as any[];
       return data
@@ -183,37 +187,28 @@ export default function App() {
     saveStateForUser(user.id, user.sessionDate);
   }, [user?.id, user?.sessionDate, greenSpeed, practices, entryTime, exitTime, showAnalysis]);
 
-  const fetchRemoteUser = async (id: string) => {
-    try {
-      const resp = await fetch(`/api/user?id=${encodeURIComponent(id)}`);
-      if (!resp.ok) return null;
-      return (await resp.json()) as any;
-    } catch {
-      return null;
-    }
-  };
-
   const authenticate = async (id: string, passcode: string) => {
     // 관리자 계정은 로컬로 체크
-    if (id === ADMIN_ID && passcode === ADMIN_PASSCODE) return { isAdmin: true };
+    if (id === ADMIN_ID && passcode === ADMIN_PASSCODE) return { isAdmin: true, token: null };
 
-    // 원격 서버에서 사용자 정보를 확인
-    const remoteUser = await fetchRemoteUser(id);
-    if (remoteUser) {
-      if (remoteUser.passcode === passcode) {
-        return { isAdmin: false };
-      }
+    const resp = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, passcode }),
+    });
+
+    if (!resp.ok) {
       throw new Error('ID 또는 Passcode가 올바르지 않습니다.');
     }
 
-    // 원격 사용자가 없으면 로컬 관리 목록을 확인
-    const match = managedUsers.find(u => u.id === id && u.passcode === passcode);
-    if (match) return { isAdmin: false };
-    throw new Error('ID 또는 Passcode가 올바르지 않습니다.');
+    const data = await resp.json();
+    return { isAdmin: data.isAdmin, token: data.token };
   };
+
 
   const handleLogin = async (data: LoginFormData) => {
     const result = await authenticate(data.id, data.passcode);
+    setAuthToken(result.token ?? null);
     setUser({ id: data.id, sessionDate: data.sessionDate, isAdmin: !!result.isAdmin });
 
     const sessions = loadSessions(data.id);
@@ -233,22 +228,33 @@ export default function App() {
     }
   };
 
+  const mergeSessions = (localSessions: StoredSession[], remoteSessions: StoredSession[]) => {
+    const merged = [...localSessions, ...remoteSessions].reduce<Record<string, StoredSession>>((map, session) => {
+      const existing = map[session.sessionDate];
+      const sessionExit = session.exitTime ? new Date(session.exitTime).getTime() : 0;
+      const existingExit = existing?.exitTime ? new Date(existing.exitTime).getTime() : 0;
+      if (!existing || sessionExit > existingExit) {
+        map[session.sessionDate] = session;
+      }
+      return map;
+    }, {} as Record<string, StoredSession>);
+
+    return Object.values(merged).sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
+  };
+
+  const refreshSessions = async (userId: string) => {
+    if (!authToken) return;
+
+    const localSessions = loadSessions(userId);
+    const remoteSessions = await fetchSessionsFromServer(userId);
+    const sessions = mergeSessions(localSessions, remoteSessions);
+    setSelectedUserSessions(sessions);
+  };
+
   const openSessionsForUser = async (userId: string) => {
     const localSessions = loadSessions(userId);
     const remoteSessions = await fetchSessionsFromServer(userId);
-
-    const merged = [...localSessions, ...remoteSessions]
-      .reduce<Record<string, StoredSession>>((map, session) => {
-        const existing = map[session.sessionDate];
-        const sessionExit = session.exitTime ? new Date(session.exitTime).getTime() : 0;
-        const existingExit = existing?.exitTime ? new Date(existing.exitTime).getTime() : 0;
-        if (!existing || sessionExit > existingExit) {
-          map[session.sessionDate] = session;
-        }
-        return map;
-      }, {} as Record<string, StoredSession>);
-
-    const sessions = Object.values(merged).sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
+    const sessions = mergeSessions(localSessions, remoteSessions);
 
     setSelectedManagedUser(userId);
     setSelectedUserSessions(sessions);
@@ -256,6 +262,13 @@ export default function App() {
     setCompareSessionDates([]);
     setOpenSessionDialog(true);
   };
+
+  useEffect(() => {
+    if (!openSessionDialog || !selectedManagedUser || !authToken) return;
+    const intervalId = setInterval(() => refreshSessions(selectedManagedUser), 10000);
+    return () => clearInterval(intervalId);
+  }, [openSessionDialog, selectedManagedUser, authToken]);
+
 
   const toggleCompareSession = (sessionDate: string) => {
     setCompareSessionDates(prev => {
