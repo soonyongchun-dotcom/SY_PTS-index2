@@ -184,7 +184,7 @@ export default function App() {
     saveStateForUser(user.id, user.sessionDate);
   }, [user?.id, user?.sessionDate, greenSpeed, practices, entryTime, exitTime, showAnalysis]);
 
-  const REMOTE_BOX_ID = 'putting-training-box'; // TODO: 실제로 사용하실 box ID로 변경해주세요.
+  const REMOTE_BOX_ID = 'sy-putting-box'; // JSONBox에서 만든 박스 ID로 변경했습니다.
   const REMOTE_BASE = `https://jsonbox.io/${REMOTE_BOX_ID}`;
 
   const fetchRemoteUser = async (id: string) => {
