@@ -216,13 +216,17 @@ export default function App() {
   const toggleCompareSession = (sessionDate: string) => {
     setCompareSessionDates(prev => {
       if (prev.includes(sessionDate)) return prev.filter(d => d !== sessionDate);
-      if (prev.length >= 2) return [prev[1], sessionDate];
+      if (prev.length >= 2) return prev; // 최대 2개까지만 선택
       return [...prev, sessionDate];
     });
   };
 
   const loadSessionIntoView = (userId: string, session: StoredSession) => {
-    setUser({ id: userId, sessionDate: session.sessionDate, isAdmin: false });
+    setUser(prev => ({
+      id: userId,
+      sessionDate: session.sessionDate,
+      isAdmin: prev?.isAdmin ?? false,
+    }));
     setGreenSpeed(session.greenSpeed);
     setPractices(session.practices ?? []);
     setEntryTime(session.entryTime ? new Date(session.entryTime) : null);
@@ -654,7 +658,7 @@ export default function App() {
       </Box>
     );
   }
-  if (!greenSpeed) {
+  if (greenSpeed === null && !user?.isAdmin) {
     return (
       <Box sx={{ pt: '84px', minHeight: '100vh', background: 'rgba(255,255,255,0.85)' }}>
         <Header />
@@ -1460,13 +1464,20 @@ export default function App() {
                       sx={{
                         pl: 0,
                         bgcolor: isCompared ? 'rgba(25, 118, 210, 0.08)' : 'inherit',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                       }}
                     >
-                      <ListItemText
-                        primary={session.sessionDate}
-                        secondary={`로그인: ${session.entryTime ?? '-'} / 로그아웃: ${session.exitTime ?? '-'}`}
-                      />
-                      <ListItemSecondaryAction>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" noWrap>
+                          {session.sessionDate}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          로그인: {session.entryTime ?? '-'} / 로그아웃: {session.exitTime ?? '-'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 0.5, ml: 1 }}>
                         <Button
                           size="small"
                           onClick={() => selectedManagedUser && loadSessionIntoView(selectedManagedUser, session)}
@@ -1490,63 +1501,56 @@ export default function App() {
                         >
                           <DeleteIcon />
                         </IconButton>
-                      </ListItemSecondaryAction>
+                      </Box>
                     </ListItem>
                   );
                 })}
               </List>
 
-              {compareSessionDates.length > 0 && (
-                <Box sx={{ mt: 2, p: 2, border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    세션 비교
-                  </Typography>
-                  {compareSessionDates.length === 2 ? (
-                    (() => {
-                      const compareSessions = selectedUserSessions.filter(s =>
-                        compareSessionDates.includes(s.sessionDate),
-                      );
-                      const getMetrics = (session: StoredSession) => {
-                        const { total, successRate, threePuttRate } = computeSimpleStats(session.practices ?? []);
-                        return { total, successRate, threePuttRate };
-                      };
+              {compareSessionDates.length === 2 ? (
+                (() => {
+                  const compareSessions = selectedUserSessions.filter(s =>
+                    compareSessionDates.includes(s.sessionDate),
+                  );
+                  const getMetrics = (session: StoredSession) => {
+                    const { total, successRate, threePuttRate } = computeSimpleStats(session.practices ?? []);
+                    return { total, successRate, threePuttRate };
+                  };
 
-                      return (
-                        <Box sx={{ display: 'flex', gap: 2 }}>
-                          {compareSessions.map(session => {
-                            const metrics = getMetrics(session);
-                            return (
-                              <Box key={session.sessionDate} sx={{ flex: 1, p: 1, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1 }}>
-                                <Typography variant="subtitle2">{session.sessionDate}</Typography>
-                                <Typography variant="body2" sx={{ mt: 1 }}>
-                                  총 퍼팅: {metrics.total}
-                                </Typography>
-                                <Typography variant="body2" sx={{ mt: 0.5 }}>
-                                  성공률: {metrics.successRate.toFixed(1)}%
-                                </Typography>
-                                <Typography variant="body2" sx={{ mt: 0.5 }}>
-                                  3퍼팅률: {metrics.threePuttRate.toFixed(1)}%
-                                </Typography>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  sx={{ mt: 1 }}
-                                  onClick={() => selectedManagedUser && loadSessionIntoView(selectedManagedUser, session)}
-                                >
-                                  이 세션 보기
-                                </Button>
-                              </Box>
-                            );
-                          })}
-                        </Box>
-                      );
-                    })()
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      비교하려면 두 개의 세션을 선택하세요.
-                    </Typography>
-                  )}
-                </Box>
+                  return (
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                      {compareSessions.map(session => {
+                        const metrics = getMetrics(session);
+                        return (
+                          <Box key={session.sessionDate} sx={{ flex: 1, p: 1, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1 }}>
+                            <Typography variant="subtitle2">{session.sessionDate}</Typography>
+                            <Typography variant="body2" sx={{ mt: 1 }}>
+                              총 퍼팅: {metrics.total}
+                            </Typography>
+                            <Typography variant="body2" sx={{ mt: 0.5 }}>
+                              성공률: {metrics.successRate.toFixed(1)}%
+                            </Typography>
+                            <Typography variant="body2" sx={{ mt: 0.5 }}>
+                              3퍼팅률: {metrics.threePuttRate.toFixed(1)}%
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              sx={{ mt: 1 }}
+                              onClick={() => selectedManagedUser && loadSessionIntoView(selectedManagedUser, session)}
+                            >
+                              이 세션 보기
+                            </Button>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  );
+                })()
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  비교하려면 두 개의 세션을 선택하세요.
+                </Typography>
               )}
             </>
           )}
