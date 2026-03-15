@@ -119,8 +119,7 @@ export default function App() {
 
   const fetchSessionsFromServer = async (userId: string): Promise<StoredSession[]> => {
     try {
-      const q = encodeURIComponent(`type:session,userId:${userId}`);
-      const resp = await fetch(`${REMOTE_BASE}?q=${q}`);
+      const resp = await fetch(`/api/sessions?userId=${encodeURIComponent(userId)}`);
       if (!resp.ok) return [];
       const data = (await resp.json()) as any[];
       return data
@@ -184,16 +183,11 @@ export default function App() {
     saveStateForUser(user.id, user.sessionDate);
   }, [user?.id, user?.sessionDate, greenSpeed, practices, entryTime, exitTime, showAnalysis]);
 
-  const REMOTE_BOX_ID = 'sy-putting-box'; // JSONBox에서 만든 박스 ID로 변경했습니다.
-  const REMOTE_BASE = `https://jsonbox.io/${REMOTE_BOX_ID}`;
-
   const fetchRemoteUser = async (id: string) => {
     try {
-      const q = encodeURIComponent(`type:user,id:${id}`);
-      const resp = await fetch(`${REMOTE_BASE}?q=${q}`);
+      const resp = await fetch(`/api/user?id=${encodeURIComponent(id)}`);
       if (!resp.ok) return null;
-      const data = (await resp.json()) as any[];
-      return data[0] ?? null;
+      return (await resp.json()) as any;
     } catch {
       return null;
     }
@@ -1005,22 +999,6 @@ export default function App() {
     setShowAnalysis(false);
   };
 
-  const saveSessionToServer = async (userId: string, session: StoredSession) => {
-    try {
-      await fetch(REMOTE_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'session',
-          userId,
-          ...session,
-        }),
-      });
-    } catch {
-      // ignore
-    }
-  };
-
   const handleEndPractice = async () => {
     // 연습 종료 시 세션 저장 후 로그아웃 처리
     if (!user?.id) return;
@@ -1054,7 +1032,15 @@ export default function App() {
       const sessions = loadSessions(user.id).filter(s => s.sessionDate !== user.sessionDate);
       sessions.push(session);
       saveSessions(user.id, sessions);
-      await saveSessionToServer(user.id, session);
+      await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'session',
+          userId: user.id,
+          ...session,
+        }),
+      });
     } catch {
       // ignore
     }
