@@ -660,7 +660,7 @@ export default function App() {
       </Box>
     );
   }
-  if (greenSpeed === null && !user?.isAdmin) {
+  if (!greenSpeed) {
     return (
       <Box sx={{ pt: '84px', minHeight: '100vh', background: 'rgba(255,255,255,0.85)' }}>
         <Header />
