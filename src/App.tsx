@@ -17,6 +17,7 @@ import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction';
 import ListItemText from '@mui/material/ListItemText';
 import TextField from '@mui/material/TextField';
@@ -42,6 +43,15 @@ interface User {
   isAdmin: boolean;
 }
 
+interface StoredSession {
+  sessionDate: string;
+  entryTime: string | null;
+  exitTime: string | null;
+  greenSpeed: string | null;
+  practices: Practice[];
+  showAnalysis: boolean;
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [managedUsers, setManagedUsers] = useState<Array<{ id: string; passcode: string }>>(() => {
@@ -62,8 +72,12 @@ export default function App() {
   const [exitTime, setExitTime] = useState<Date | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [selectedManagedUser, setSelectedManagedUser] = useState<string | null>(null);
+  const [selectedUserSessions, setSelectedUserSessions] = useState<StoredSession[]>([]);
+  const [openSessionDialog, setOpenSessionDialog] = useState(false);
 
   const storageKeyFor = (userId: string) => `puttingState:${userId}`;
+  const sessionsKeyFor = (userId: string) => `puttingSessions:${userId}`;
 
   const loadStoredState = (userId: string) => {
     try {
@@ -88,7 +102,26 @@ export default function App() {
     }
   };
 
-  const saveStateForUser = (userId: string) => {
+  const loadSessions = (userId: string): StoredSession[] => {
+    try {
+      const raw = localStorage.getItem(sessionsKeyFor(userId));
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as StoredSession[];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveSessions = (userId: string, sessions: StoredSession[]) => {
+    try {
+      localStorage.setItem(sessionsKeyFor(userId), JSON.stringify(sessions));
+    } catch {
+      // ignore
+    }
+  };
+
+  const saveStateForUser = (userId: string, sessionDate: string) => {
     try {
       localStorage.setItem(
         storageKeyFor(userId),
@@ -103,12 +136,28 @@ export default function App() {
     } catch {
       // ignore
     }
+
+    try {
+      const sessions = loadSessions(userId);
+      const nextSession: StoredSession = {
+        sessionDate,
+        entryTime: entryTime?.toISOString() ?? null,
+        exitTime: exitTime?.toISOString() ?? null,
+        greenSpeed,
+        practices,
+        showAnalysis,
+      };
+      const updated = sessions.filter(s => s.sessionDate !== sessionDate).concat(nextSession);
+      saveSessions(userId, updated);
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
     if (!user?.id) return;
-    saveStateForUser(user.id);
-  }, [user?.id, greenSpeed, practices, entryTime, exitTime, showAnalysis]);
+    saveStateForUser(user.id, user.sessionDate);
+  }, [user?.id, user?.sessionDate, greenSpeed, practices, entryTime, exitTime, showAnalysis]);
 
   const authenticate = async (id: string, passcode: string) => {
     // 서버리스 인증 함수 호출 (Vercel/Netlify 등에서 /api/auth로 구성)
@@ -136,15 +185,46 @@ export default function App() {
     const result = await authenticate(data.id, data.passcode);
     setUser({ id: data.id, sessionDate: data.sessionDate, isAdmin: !!result.isAdmin });
 
-    const stored = loadStoredState(data.id);
+    const sessions = loadSessions(data.id);
+    const stored = sessions.find(s => s.sessionDate === data.sessionDate);
     if (stored) {
       setGreenSpeed(stored.greenSpeed);
       setPractices(stored.practices ?? []);
-      setEntryTime(stored.entryTime);
-      setExitTime(stored.exitTime);
+      setEntryTime(stored.entryTime ? new Date(stored.entryTime) : null);
+      setExitTime(stored.exitTime ? new Date(stored.exitTime) : null);
       setShowAnalysis(stored.showAnalysis);
     } else {
+      setGreenSpeed(null);
+      setPractices([]);
       setEntryTime(new Date());
+      setExitTime(null);
+      setShowAnalysis(false);
+    }
+  };
+
+  const openSessionsForUser = (userId: string) => {
+    const sessions = loadSessions(userId).sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
+    setSelectedManagedUser(userId);
+    setSelectedUserSessions(sessions);
+    setOpenSessionDialog(true);
+  };
+
+  const loadSessionIntoView = (userId: string, session: StoredSession) => {
+    setUser({ id: userId, sessionDate: session.sessionDate, isAdmin: false });
+    setGreenSpeed(session.greenSpeed);
+    setPractices(session.practices ?? []);
+    setEntryTime(session.entryTime ? new Date(session.entryTime) : null);
+    setExitTime(session.exitTime ? new Date(session.exitTime) : null);
+    setShowAnalysis(true);
+    setOpenSessionDialog(false);
+    setOpenManager(false);
+  };
+
+  const deleteSessionForUser = (userId: string, sessionDate: string) => {
+    const sessions = loadSessions(userId).filter(s => s.sessionDate !== sessionDate);
+    saveSessions(userId, sessions);
+    if (selectedManagedUser === userId) {
+      setSelectedUserSessions(sessions);
     }
   };
 
@@ -765,12 +845,38 @@ export default function App() {
 
   const handleResetSession = () => {
     if (user?.id) {
+      const now = new Date();
       try {
-        localStorage.removeItem(storageKeyFor(user.id));
+        localStorage.setItem(
+          storageKeyFor(user.id),
+          JSON.stringify({
+            greenSpeed,
+            practices,
+            entryTime: entryTime?.toISOString() ?? null,
+            exitTime: now.toISOString(),
+            showAnalysis,
+          }),
+        );
+      } catch {
+        // ignore
+      }
+
+      try {
+        const sessions = loadSessions(user.id).filter(s => s.sessionDate !== user.sessionDate);
+        sessions.push({
+          sessionDate: user.sessionDate,
+          entryTime: entryTime?.toISOString() ?? null,
+          exitTime: now.toISOString(),
+          greenSpeed,
+          practices,
+          showAnalysis,
+        });
+        saveSessions(user.id, sessions);
       } catch {
         // ignore
       }
     }
+
     setUser(null);
     setGreenSpeed(null);
     setPractices([]);
@@ -1082,14 +1188,23 @@ export default function App() {
 
           <List dense>
             {managedUsers.map(user => (
-              <ListItem key={user.id} divider>
-                <ListItemText primary={user.id} secondary={`Passcode: ${user.passcode}`} />
+              <ListItemButton key={user.id} divider onClick={() => openSessionsForUser(user.id)}>
+                <ListItemText
+                  primary={user.id}
+                  secondary={`Passcode: ${user.passcode} · 세션 보기(클릭)`}
+                />
                 <ListItemSecondaryAction>
-                  <IconButton edge="end" onClick={() => handleRemoveUser(user.id)}>
+                  <IconButton
+                    edge="end"
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleRemoveUser(user.id);
+                    }}
+                  >
                     <DeleteIcon />
                   </IconButton>
                 </ListItemSecondaryAction>
-              </ListItem>
+              </ListItemButton>
             ))}
             {managedUsers.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -1100,6 +1215,45 @@ export default function App() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenManager(false)}>닫기 (Close)</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openSessionDialog} onClose={() => setOpenSessionDialog(false)} fullWidth maxWidth="sm">
+        <DialogTitle>세션 기록 {selectedManagedUser ? `- ${selectedManagedUser}` : ''}</DialogTitle>
+        <DialogContent>
+          {selectedUserSessions.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              세션 기록이 없습니다. (No session records.)
+            </Typography>
+          ) : (
+            <List dense>
+              {selectedUserSessions.map(session => (
+                <ListItem key={session.sessionDate} sx={{ pl: 0 }}>
+                  <ListItemText
+                    primary={session.sessionDate}
+                    secondary={`로그인: ${session.entryTime ?? '-'} / 로그아웃: ${session.exitTime ?? '-'}`}
+                  />
+                  <ListItemSecondaryAction>
+                    <Button
+                      size="small"
+                      onClick={() => selectedManagedUser && loadSessionIntoView(selectedManagedUser, session)}
+                    >
+                      불러오기
+                    </Button>
+                    <IconButton
+                      size="small"
+                      onClick={() => selectedManagedUser && deleteSessionForUser(selectedManagedUser, session.sessionDate)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenSessionDialog(false)}>닫기 (Close)</Button>
         </DialogActions>
       </Dialog>
     </Box>
