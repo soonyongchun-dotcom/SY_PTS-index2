@@ -189,46 +189,44 @@ export default function App() {
 
   const ADMIN_TOKEN = 'ADMIN_TOKEN';
 
+  const loadManagedUsers = (): Array<{ id: string; passcode: string }> => {
+    try {
+      const raw = localStorage.getItem('managedUsers');
+      if (!raw) return [];
+      return JSON.parse(raw) as Array<{ id: string; passcode: string }>;
+    } catch {
+      return [];
+    }
+  };
+
+  const saveManagedUsers = (users: Array<{ id: string; passcode: string }>) => {
+    localStorage.setItem('managedUsers', JSON.stringify(users));
+  };
+
   const authenticate = async (id: string, passcode: string) => {
     // 관리자 계정은 로컬로 체크 (토큰 발급)
     if (id === ADMIN_ID && passcode === ADMIN_PASSCODE) {
       return { isAdmin: true, token: ADMIN_TOKEN };
     }
 
-    const resp = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, passcode }),
-    });
-
-    if (!resp.ok) {
+    const users = loadManagedUsers();
+    const user = users.find(u => u.id === id && u.passcode === passcode);
+    if (!user) {
       throw new Error('ID 또는 Passcode가 올바르지 않습니다.');
     }
 
-    const data = await resp.json();
-    return { isAdmin: data.isAdmin, token: data.token };
+    return { isAdmin: false, token: 'USER_TOKEN' };
   };
 
 
   const fetchUsersFromServer = async (): Promise<Array<{ id: string }>> => {
-    if (!authToken) return [];
-    try {
-      const resp = await fetch('/api/user?list=true', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      if (!resp.ok) return [];
-      const data = (await resp.json()) as any[];
-      return data.map(user => ({ id: user.id }));
-    } catch {
-      return [];
-    }
+    const users = loadManagedUsers();
+    return users.map(u => ({ id: u.id }));
   };
 
   const refreshUsers = async () => {
     const serverUsers = await fetchUsersFromServer();
-    if (serverUsers.length > 0) {
-      setManagedUsers(serverUsers.map(u => ({ id: u.id, passcode: '********' })));
-    }
+    setManagedUsers(serverUsers.map(u => ({ id: u.id, passcode: '********' })));
   };
 
   const handleLogin = async (data: LoginFormData) => {
@@ -332,50 +330,27 @@ export default function App() {
   };
 
   const createUserOnServer = async (id: string, passcode: string) => {
-    if (!authToken) return false;
-    try {
-      const resp = await fetch('/api/user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ id, passcode }),
-      });
-      return resp.ok;
-    } catch {
-      return false;
-    }
+    const users = loadManagedUsers();
+    if (users.some(u => u.id === id)) return false;
+    users.push({ id, passcode });
+    saveManagedUsers(users);
+    return true;
   };
 
   const deleteUserOnServer = async (id: string) => {
-    if (!authToken) return false;
-    try {
-      const resp = await fetch(`/api/user?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      return resp.ok;
-    } catch {
-      return false;
-    }
+    const users = loadManagedUsers();
+    const next = users.filter(u => u.id !== id);
+    saveManagedUsers(next);
+    return true;
   };
 
   const handleAddUser = async (id: string, passcode: string) => {
-    const resp = await fetch('/api/user', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-      body: JSON.stringify({ id, passcode }),
-    });
-    if (resp.ok) {
+    const ok = await createUserOnServer(id, passcode);
+    if (ok) {
       await refreshUsers();
       return;
     }
-
-    const data = await resp.json().catch(() => null);
-    if (resp.status === 409) {
-      alert('이미 존재하는 사용자입니다.');
-      return;
-    }
-
-    alert(data?.error || '사용자 등록에 실패했습니다.');
+    alert('이미 존재하는 사용자입니다.');
   };
 
   const handleRemoveUser = async (id: string) => {
@@ -1100,15 +1075,6 @@ export default function App() {
       const sessions = loadSessions(user.id).filter(s => s.sessionDate !== user.sessionDate);
       sessions.push(session);
       saveSessions(user.id, sessions);
-      await fetch('/api/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'session',
-          userId: user.id,
-          ...session,
-        }),
-      });
     } catch {
       // ignore
     }
