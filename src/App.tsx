@@ -2,6 +2,16 @@ import React, { useEffect, useState } from 'react';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import LoginForm, { LoginFormData, ADMIN_ID, ADMIN_PASSCODE } from './LoginForm';
+import {
+  createUser,
+  deleteUser,
+  deleteSession,
+  listUsers,
+  getUserById,
+  listSessions,
+  saveSession,
+  StoredSession,
+} from './firebase';
 import GreenSpeedForm from './GreenSpeedForm';
 import PuttingPracticeForm, { PracticeInput } from './PuttingPracticeForm';
 import Button from '@mui/material/Button';
@@ -44,26 +54,10 @@ interface User {
   isAdmin: boolean;
 }
 
-interface StoredSession {
-  sessionDate: string;
-  entryTime: string | null;
-  exitTime: string | null;
-  greenSpeed: string | null;
-  practices: Practice[];
-  showAnalysis: boolean;
-}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [managedUsers, setManagedUsers] = useState<Array<{ id: string; passcode: string }>>(() => {
-    try {
-      const raw = localStorage.getItem('managedUsers');
-      if (!raw) return [];
-      return JSON.parse(raw);
-    } catch {
-      return [];
-    }
-  });
+  const [managedUsers, setManagedUsers] = useState<Array<{ id: string; passcode: string }>>([]);
   const [openManager, setOpenManager] = useState(false);
   const [newUserId, setNewUserId] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
@@ -81,137 +75,18 @@ export default function App() {
   const [selectedUserSessions, setSelectedUserSessions] = useState<StoredSession[]>([]);
   const [openSessionDialog, setOpenSessionDialog] = useState(false);
 
-  const storageKeyFor = (userId: string) => `puttingState:${userId}`;
-  const sessionsKeyFor = (userId: string) => `puttingSessions:${userId}`;
-
-  const loadStoredState = (userId: string) => {
-    try {
-      const raw = localStorage.getItem(storageKeyFor(userId));
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as {
-        greenSpeed: string | null;
-        practices: Practice[];
-        entryTime: string | null;
-        exitTime: string | null;
-        showAnalysis: boolean;
-      };
-      return {
-        greenSpeed: parsed.greenSpeed,
-        practices: parsed.practices ?? [],
-        entryTime: parsed.entryTime ? new Date(parsed.entryTime) : null,
-        exitTime: parsed.exitTime ? new Date(parsed.exitTime) : null,
-        showAnalysis: parsed.showAnalysis ?? false,
-      };
-    } catch {
-      return null;
-    }
-  };
-
-  const loadSessions = (userId: string): StoredSession[] => {
-    try {
-      const raw = localStorage.getItem(sessionsKeyFor(userId));
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as StoredSession[];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  };
-
   const fetchSessionsFromServer = async (userId: string): Promise<StoredSession[]> => {
-    if (!authToken) return [];
-    try {
-      const resp = await fetch(`/api/sessions?userId=${encodeURIComponent(userId)}`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      if (!resp.ok) return [];
-      const data = (await resp.json()) as any[];
-      return data
-        .filter(item => item.sessionDate && item.userId === userId)
-        .map(item => ({
-          sessionDate: item.sessionDate,
-          entryTime: item.entryTime,
-          exitTime: item.exitTime,
-          greenSpeed: item.greenSpeed,
-          practices: item.practices ?? [],
-          showAnalysis: item.showAnalysis ?? false,
-        }));
-    } catch {
-      return [];
-    }
-  };
-
-  const saveSessions = (userId: string, sessions: StoredSession[]) => {
-    try {
-      localStorage.setItem(sessionsKeyFor(userId), JSON.stringify(sessions));
-    } catch {
-      // ignore
-    }
-  };
-
-  const saveStateForUser = (userId: string, sessionDate: string) => {
-    try {
-      localStorage.setItem(
-        storageKeyFor(userId),
-        JSON.stringify({
-          greenSpeed,
-          practices,
-          entryTime: entryTime?.toISOString() ?? null,
-          exitTime: exitTime?.toISOString() ?? null,
-          showAnalysis,
-        }),
-      );
-    } catch {
-      // ignore
-    }
-
-    try {
-      const sessions = loadSessions(userId);
-      const nextSession: StoredSession = {
-        sessionDate,
-        entryTime: entryTime?.toISOString() ?? null,
-        exitTime: exitTime?.toISOString() ?? null,
-        greenSpeed,
-        practices,
-        showAnalysis,
-      };
-      const updated = sessions.filter(s => s.sessionDate !== sessionDate).concat(nextSession);
-      saveSessions(userId, updated);
-    } catch {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    if (!user?.id) return;
-    saveStateForUser(user.id, user.sessionDate);
-  }, [user?.id, user?.sessionDate, greenSpeed, practices, entryTime, exitTime, showAnalysis]);
-
-  const ADMIN_TOKEN = 'ADMIN_TOKEN';
-
-  const loadManagedUsers = (): Array<{ id: string; passcode: string }> => {
-    try {
-      const raw = localStorage.getItem('managedUsers');
-      if (!raw) return [];
-      return JSON.parse(raw) as Array<{ id: string; passcode: string }>;
-    } catch {
-      return [];
-    }
-  };
-
-  const saveManagedUsers = (users: Array<{ id: string; passcode: string }>) => {
-    localStorage.setItem('managedUsers', JSON.stringify(users));
+    return await listSessions(userId);
   };
 
   const authenticate = async (id: string, passcode: string) => {
     // 관리자 계정은 로컬로 체크 (토큰 발급)
     if (id === ADMIN_ID && passcode === ADMIN_PASSCODE) {
-      return { isAdmin: true, token: ADMIN_TOKEN };
+      return { isAdmin: true, token: 'ADMIN_TOKEN' };
     }
 
-    const users = loadManagedUsers();
-    const user = users.find(u => u.id === id && u.passcode === passcode);
-    if (!user) {
+    const user = await getUserById(id);
+    if (!user || user.passcode !== passcode) {
       throw new Error('ID 또는 Passcode가 올바르지 않습니다.');
     }
 
@@ -220,7 +95,7 @@ export default function App() {
 
 
   const fetchUsersFromServer = async (): Promise<Array<{ id: string }>> => {
-    const users = loadManagedUsers();
+    const users = await listUsers();
     return users.map(u => ({ id: u.id }));
   };
 
@@ -239,7 +114,7 @@ export default function App() {
       refreshUsers();
     }
 
-    const sessions = loadSessions(data.id);
+    const sessions = await listSessions(data.id);
     const stored = sessions.find(s => s.sessionDate === data.sessionDate);
     if (stored) {
       setGreenSpeed(stored.greenSpeed);
@@ -256,33 +131,15 @@ export default function App() {
     }
   };
 
-  const mergeSessions = (localSessions: StoredSession[], remoteSessions: StoredSession[]) => {
-    const merged = [...localSessions, ...remoteSessions].reduce<Record<string, StoredSession>>((map, session) => {
-      const existing = map[session.sessionDate];
-      const sessionExit = session.exitTime ? new Date(session.exitTime).getTime() : 0;
-      const existingExit = existing?.exitTime ? new Date(existing.exitTime).getTime() : 0;
-      if (!existing || sessionExit > existingExit) {
-        map[session.sessionDate] = session;
-      }
-      return map;
-    }, {} as Record<string, StoredSession>);
 
-    return Object.values(merged).sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
-  };
 
   const refreshSessions = async (userId: string) => {
-    if (!authToken) return;
-
-    const localSessions = loadSessions(userId);
-    const remoteSessions = await fetchSessionsFromServer(userId);
-    const sessions = mergeSessions(localSessions, remoteSessions);
+    const sessions = await listSessions(userId);
     setSelectedUserSessions(sessions);
   };
 
   const openSessionsForUser = async (userId: string) => {
-    const localSessions = loadSessions(userId);
-    const remoteSessions = await fetchSessionsFromServer(userId);
-    const sessions = mergeSessions(localSessions, remoteSessions);
+    const sessions = await listSessions(userId);
 
     setSelectedManagedUser(userId);
     setSelectedUserSessions(sessions);
@@ -321,27 +178,20 @@ export default function App() {
     setOpenManager(false);
   };
 
-  const deleteSessionForUser = (userId: string, sessionDate: string) => {
-    const sessions = loadSessions(userId).filter(s => s.sessionDate !== sessionDate);
-    saveSessions(userId, sessions);
+  const deleteSessionForUser = async (userId: string, sessionDate: string) => {
+    await deleteSession(userId, sessionDate);
+    const sessions = await listSessions(userId);
     if (selectedManagedUser === userId) {
       setSelectedUserSessions(sessions);
     }
   };
 
   const createUserOnServer = async (id: string, passcode: string) => {
-    const users = loadManagedUsers();
-    if (users.some(u => u.id === id)) return false;
-    users.push({ id, passcode });
-    saveManagedUsers(users);
-    return true;
+    return await createUser(id, passcode);
   };
 
   const deleteUserOnServer = async (id: string) => {
-    const users = loadManagedUsers();
-    const next = users.filter(u => u.id !== id);
-    saveManagedUsers(next);
-    return true;
+    return await deleteUser(id);
   };
 
   const handleAddUser = async (id: string, passcode: string) => {
@@ -1048,6 +898,7 @@ export default function App() {
 
     const now = new Date();
     const session: StoredSession = {
+      userId: user.id,
       sessionDate: user.sessionDate,
       entryTime: entryTime?.toISOString() ?? null,
       exitTime: now.toISOString(),
@@ -1057,24 +908,7 @@ export default function App() {
     };
 
     try {
-      localStorage.setItem(
-        storageKeyFor(user.id),
-        JSON.stringify({
-          greenSpeed,
-          practices,
-          entryTime: entryTime?.toISOString() ?? null,
-          exitTime: now.toISOString(),
-          showAnalysis,
-        }),
-      );
-    } catch {
-      // ignore
-    }
-
-    try {
-      const sessions = loadSessions(user.id).filter(s => s.sessionDate !== user.sessionDate);
-      sessions.push(session);
-      saveSessions(user.id, sessions);
+      await saveSession(session);
     } catch {
       // ignore
     }
@@ -1141,7 +975,6 @@ export default function App() {
                       const parsed = JSON.parse(reader.result as string);
                       if (Array.isArray(parsed)) {
                         setManagedUsers(parsed);
-                        localStorage.setItem('managedUsers', JSON.stringify(parsed));
                       }
                     } catch {
                       // ignore
