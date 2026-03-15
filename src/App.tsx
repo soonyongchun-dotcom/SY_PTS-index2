@@ -187,9 +187,13 @@ export default function App() {
     saveStateForUser(user.id, user.sessionDate);
   }, [user?.id, user?.sessionDate, greenSpeed, practices, entryTime, exitTime, showAnalysis]);
 
+  const ADMIN_TOKEN = 'ADMIN_TOKEN';
+
   const authenticate = async (id: string, passcode: string) => {
-    // 관리자 계정은 로컬로 체크
-    if (id === ADMIN_ID && passcode === ADMIN_PASSCODE) return { isAdmin: true, token: null };
+    // 관리자 계정은 로컬로 체크 (토큰 발급)
+    if (id === ADMIN_ID && passcode === ADMIN_PASSCODE) {
+      return { isAdmin: true, token: ADMIN_TOKEN };
+    }
 
     const resp = await fetch('/api/auth', {
       method: 'POST',
