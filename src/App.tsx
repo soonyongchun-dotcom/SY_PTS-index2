@@ -1128,6 +1128,18 @@ export default function App() {
                 })
               )}
 
+              <Box sx={{ mt: 2, p: 2, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  종합 통계 (Overall Stats)
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  퍼팅 성공률: {successRate.toFixed(1)}% ({stats.madeCount}/{stats.total})
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  3퍼팅률: {threePuttRate.toFixed(1)}% ({stats.threePuttCount}/{stats.total})
+                </Typography>
+              </Box>
+
               <Button
                 variant="outlined"
                 size="small"
@@ -1142,9 +1154,11 @@ export default function App() {
                     <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                       분석 피드백 (Feedback)
                     </Typography>
-                    <Button size="small" variant="outlined" onClick={exportFeedbackPdf}>
-                      피드백 PDF 다운로드 (Download Feedback PDF)
-                    </Button>
+                    <Tooltip title="피드백 PDF 다운로드">
+                      <IconButton size="small" onClick={exportFeedbackPdf}>
+                        <DownloadIcon />
+                      </IconButton>
+                    </Tooltip>
                   </Box>
 
                   {stats.feedback.length ? (
