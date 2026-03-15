@@ -78,5 +78,5 @@ const handler = async (req, res) => {
 };
 
 module.exports = handler;
-exports.handler = createHandler(handler);
+module.exports.handler = createHandler(handler);
 
