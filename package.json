@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/copy-index2.js",
+    "build": "tsc --noEmit && vite build && node scripts/copy-index2.js && node scripts/copy-dist-to-docs.js",
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

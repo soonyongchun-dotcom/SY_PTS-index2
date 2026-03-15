@@ -60,6 +60,53 @@ export default function App() {
   const [exitTime, setExitTime] = useState<Date | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
 
+  const storageKeyFor = (userId: string) => `puttingState:${userId}`;
+
+  const loadStoredState = (userId: string) => {
+    try {
+      const raw = localStorage.getItem(storageKeyFor(userId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as {
+        greenSpeed: string | null;
+        practices: Practice[];
+        entryTime: string | null;
+        exitTime: string | null;
+        showAnalysis: boolean;
+      };
+      return {
+        greenSpeed: parsed.greenSpeed,
+        practices: parsed.practices ?? [],
+        entryTime: parsed.entryTime ? new Date(parsed.entryTime) : null,
+        exitTime: parsed.exitTime ? new Date(parsed.exitTime) : null,
+        showAnalysis: parsed.showAnalysis ?? false,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const saveStateForUser = (userId: string) => {
+    try {
+      localStorage.setItem(
+        storageKeyFor(userId),
+        JSON.stringify({
+          greenSpeed,
+          practices,
+          entryTime: entryTime?.toISOString() ?? null,
+          exitTime: exitTime?.toISOString() ?? null,
+          showAnalysis,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (!user?.id) return;
+    saveStateForUser(user.id);
+  }, [user?.id, greenSpeed, practices, entryTime, exitTime, showAnalysis]);
+
   const authenticate = async (id: string, passcode: string) => {
     // 서버리스 인증 함수 호출 (Vercel/Netlify 등에서 /api/auth로 구성)
     // GitHub Pages처럼 서버리스가 없으면 405 에러가 발생하므로 로컬 방식으로 폴백합니다.
@@ -85,7 +132,17 @@ export default function App() {
   const handleLogin = async (data: LoginFormData) => {
     const result = await authenticate(data.id, data.passcode);
     setUser({ id: data.id, sessionDate: data.sessionDate, isAdmin: !!result.isAdmin });
-    setEntryTime(new Date());
+
+    const stored = loadStoredState(data.id);
+    if (stored) {
+      setGreenSpeed(stored.greenSpeed);
+      setPractices(stored.practices ?? []);
+      setEntryTime(stored.entryTime);
+      setExitTime(stored.exitTime);
+      setShowAnalysis(stored.showAnalysis);
+    } else {
+      setEntryTime(new Date());
+    }
   };
 
   const handleAddUser = (id: string, passcode: string) => {
@@ -521,6 +578,7 @@ export default function App() {
 
   const normalize = (value: string) => value.trim().toLowerCase();
   const isMade = (result: string) => normalize(result).includes('홀인') || normalize(result).includes('made');
+  const isThreePutt = (result: string) => normalize(result).includes('3퍼팅') || normalize(result).includes('3-putt');
 
   type ConditionStat = { success: number; total: number; label: string };
 
@@ -531,6 +589,7 @@ export default function App() {
     const bucketStats: Record<string, { success: number; total: number }> = {};
     const conditionDistanceCounts: Record<string, Record<string, number>> = {};
     let madeCount = 0;
+    let threePuttCount = 0;
 
 
     distanceBuckets.forEach(b => {
@@ -570,6 +629,7 @@ export default function App() {
       const key = normalize(p.result);
       missCounts[key] = (missCounts[key] ?? 0) + 1;
       if (made) madeCount += 1;
+      if (isThreePutt(p.result)) threePuttCount += 1;
     });
 
     const mostCommonMiss = Object.entries(missCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
@@ -588,11 +648,13 @@ export default function App() {
       feedback.push('3퍼팅이 많이 발생합니다. 퍼팅 라인 파악과 거리 감각 연습을 강화하세요.');
     }
 
-    return { total, bucketStats, conditionStats, missCounts, feedback, conditionDistanceCounts, madeCount };
+    return { total, bucketStats, conditionStats, missCounts, feedback, conditionDistanceCounts, madeCount, threePuttCount };
   };
 
   const stats = analyze();
   const greenSpeedNum = greenSpeed ? parseFloat(greenSpeed) : null;
+
+  const threePuttRate = stats.total ? (stats.threePuttCount / stats.total) * 100 : 0;
 
   const bayesianEstimate = (success: number, total: number) => {
     const alpha = 1;
@@ -633,17 +695,25 @@ export default function App() {
   };
 
   const handleResetSession = () => {
+    if (user?.id) {
+      try {
+        localStorage.removeItem(storageKeyFor(user.id));
+      } catch {
+        // ignore
+      }
+    }
     setUser(null);
     setGreenSpeed(null);
     setPractices([]);
     setEntryTime(null);
     setExitTime(null);
+    setShowAnalysis(false);
   };
 
   return (
     <Box sx={{ pt: '84px', pb: 4, minHeight: '100vh', background: 'rgba(255,255,255,0.85)' }}>
       <Header />
-      {user?.isAdmin && !greenSpeed && (
+      {user?.isAdmin && (
         <Box sx={{ position: 'fixed', top: HEADER_HEIGHT + 8, right: 16, zIndex: 1400 }}>
           <Button
             variant="contained"
@@ -791,7 +861,10 @@ export default function App() {
                   <strong>거리 가중 예측:</strong> <strong>{bayesWeightedByDistance.toFixed(2)}</strong> (거리별 성공률 기반 가중 평균)
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 0.5 }}>
-                  (현재 성공률: <strong>{stats.total ? successRate.toFixed(1) : '0.0'}%</strong> — {stats.madeCount}/{stats.total} 기록)
+                  퍼팅성공율 (퍼팅성공/총퍼팅시도): <strong>{stats.madeCount}/{stats.total}</strong> ({successRate.toFixed(1)}%)
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  3퍼팅확율 (3퍼팅수/총퍼팅횟수): <strong>{stats.threePuttCount}/{stats.total}</strong> ({threePuttRate.toFixed(1)}%)
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                   (베이시안 모델: α=1, β=1 사전분포 + 관측 성공/실패 값 기반)
