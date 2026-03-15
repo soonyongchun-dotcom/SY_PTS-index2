@@ -890,6 +890,22 @@ export default function App() {
   const { total, madeCount, threePuttCount, successRate, threePuttRate } = computeSimpleStats(practices);
   const missSummary = getMissSummaryTable();
 
+  const worstDistance = (() => {
+    const entries = Object.entries(stats.bucketStats)
+      .filter(([, stat]) => stat.total > 0)
+      .map(([label, stat]) => {
+        const fail = stat.total - stat.success;
+        return {
+          label,
+          fail,
+          total: stat.total,
+          rate: stat.total > 0 ? fail / stat.total : 0,
+        };
+      });
+    const sorted = entries.sort((a, b) => b.rate - a.rate);
+    return sorted[0] ?? null;
+  })();
+
   const bayesianEstimate = (success: number, total: number) => {
     const alpha = 1;
     const beta = 1;
@@ -1197,6 +1213,11 @@ export default function App() {
                 <Typography variant="body2" sx={{ mt: 0.5 }}>
                   3퍼팅률: {threePuttRate.toFixed(1)}% ({stats.threePuttCount}/{stats.total})
                 </Typography>
+                {worstDistance && (
+                  <Typography variant="body2" sx={{ mt: 0.5 }}>
+                    최대 실패 거리: {worstDistance.label} ({worstDistance.fail}/{worstDistance.total})
+                  </Typography>
+                )}
               </Box>
 
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
