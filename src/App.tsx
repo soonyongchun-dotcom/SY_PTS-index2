@@ -23,6 +23,8 @@ import TextField from '@mui/material/TextField';
 import DownloadIcon from '@mui/icons-material/Download';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import Tooltip from '@mui/material/Tooltip';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
@@ -721,15 +723,63 @@ export default function App() {
     <Box sx={{ pt: '84px', pb: 4, minHeight: '100vh', background: 'rgba(255,255,255,0.85)' }}>
       <Header />
       {user?.isAdmin && (
-        <Box sx={{ position: 'fixed', top: HEADER_HEIGHT + 8, right: 16, zIndex: 1400 }}>
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={() => setOpenManager(true)}
-          >
-            선수관리
-          </Button>
+        <Box sx={{ position: 'fixed', top: HEADER_HEIGHT + 8, right: 16, zIndex: 1400, display: 'flex', gap: 1 }}>
+          <Tooltip title="선수관리">
+            <IconButton size="small" color="primary" onClick={() => setOpenManager(true)}>
+              <AddIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="내보내기">
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={() => {
+                const data = JSON.stringify(managedUsers, null, 2);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'managedUsers.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <DownloadIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="불러오기">
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'application/json';
+                input.onchange = e => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    try {
+                      const parsed = JSON.parse(reader.result as string);
+                      if (Array.isArray(parsed)) {
+                        setManagedUsers(parsed);
+                        localStorage.setItem('managedUsers', JSON.stringify(parsed));
+                      }
+                    } catch {
+                      // ignore
+                    }
+                  };
+                  reader.readAsText(file);
+                };
+                input.click();
+              }}
+            >
+              <UploadFileIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
       )}
       <Container maxWidth="sm" sx={{ mt: 2, mb: 6 }}>
