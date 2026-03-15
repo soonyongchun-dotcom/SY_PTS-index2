@@ -75,6 +75,7 @@ export default function App() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showVisualization, setShowVisualization] = useState(false);
   const [compareSessionDates, setCompareSessionDates] = useState<string[]>([]);
+  const [sessionFilter, setSessionFilter] = useState('');
   const [selectedManagedUser, setSelectedManagedUser] = useState<string | null>(null);
   const [selectedUserSessions, setSelectedUserSessions] = useState<StoredSession[]>([]);
   const [openSessionDialog, setOpenSessionDialog] = useState(false);
@@ -209,6 +210,7 @@ export default function App() {
     const sessions = loadSessions(userId).sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
     setSelectedManagedUser(userId);
     setSelectedUserSessions(sessions);
+    setSessionFilter('');
     setCompareSessionDates([]);
     setOpenSessionDialog(true);
   };
@@ -1446,17 +1448,24 @@ export default function App() {
             </Typography>
           ) : (
             <>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="subtitle2">세션 목록 (비교할 세션을 2개 선택하세요)</Typography>
-                {compareSessionDates.length > 0 && (
-                  <Button size="small" onClick={() => setCompareSessionDates([])}>
-                    비교 초기화
-                  </Button>
-                )}
+                <TextField
+                  size="small"
+                  placeholder="세션 검색 (날짜 포함)"
+                  value={sessionFilter}
+                  onChange={e => setSessionFilter(e.target.value)}
+                  sx={{ width: 180 }}
+                />
+                <Button size="small" onClick={() => setCompareSessionDates([])}>
+                  비교 초기화
+                </Button>
               </Box>
 
               <List dense>
-                {selectedUserSessions.map(session => {
+                {selectedUserSessions
+                  .filter(s => !sessionFilter || s.sessionDate.includes(sessionFilter))
+                  .map(session => {
                   const isCompared = compareSessionDates.includes(session.sessionDate);
                   return (
                     <ListItem
@@ -1484,17 +1493,31 @@ export default function App() {
                         >
                           불러오기
                         </Button>
-                        <IconButton
-                          size="small"
-                          color={isCompared ? 'primary' : 'default'}
-                          onClick={e => {
-                            e.stopPropagation();
-                            toggleCompareSession(session.sessionDate);
-                          }}
-                          title="비교 대상 추가/제거"
+                        <Tooltip
+                          title={
+                            compareSessionDates.includes(session.sessionDate)
+                              ? '비교 대상에서 제거'
+                              : compareSessionDates.length >= 2
+                              ? '두 개까지만 선택 가능'
+                              : '비교 대상에 추가'
+                          }
                         >
-                          <CompareArrowsIcon />
-                        </IconButton>
+                          <span>
+                            <IconButton
+                              size="small"
+                              color={isCompared ? 'primary' : 'default'}
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (compareSessionDates.length >= 2 && !isCompared) return;
+                                toggleCompareSession(session.sessionDate);
+                              }}
+                              title="비교 대상 추가/제거"
+                              disabled={compareSessionDates.length >= 2 && !isCompared}
+                            >
+                              <CompareArrowsIcon />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
                         <IconButton
                           size="small"
                           onClick={() => selectedManagedUser && deleteSessionForUser(selectedManagedUser, session.sessionDate)}
