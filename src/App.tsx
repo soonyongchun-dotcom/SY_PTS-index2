@@ -301,7 +301,7 @@ export default function App() {
     if (conditionRows.length > 0) {
       contentWrapper.appendChild(makeTable(conditionRows));
     } else {
-      makeRow('조건별 성공률', '데이터 없음');
+      makeRow('조건별 성공률 (Success Rate by Condition)', '데이터 없음 (No data)');
     }
 
     makeSectionTitle('베이지안 예측 (Bayesian Estimate)');
@@ -311,9 +311,9 @@ export default function App() {
       makeRow('보정 안내', '그린스피드가 2.7-3.0 범위를 벗어나므로 +10% 보정 적용');
     }
 
-    makeSectionTitle('퍼팅 성공/3퍼팅 통계');
-    makeRow('퍼팅성공율', `${successRate.toFixed(1)}% (${stats.madeCount}/${stats.total})`);
-    makeRow('3퍼팅확율', `${threePuttRate.toFixed(1)}% (${stats.threePuttCount}/${stats.total})`);
+    makeSectionTitle('퍼팅 성공/3퍼팅 통계 (Putting Success / 3-Putt Stats)');
+    makeRow('퍼팅 성공률 (Putting Success Rate)', `${successRate.toFixed(1)}% (${stats.madeCount}/${stats.total})`);
+    makeRow('3퍼팅 확률 (3-Putt Rate)', `${threePuttRate.toFixed(1)}% (${stats.threePuttCount}/${stats.total})`);
 
     if (stats.feedback.length) {
       makeSectionTitle('분석 피드백 (Feedback)');
@@ -586,16 +586,16 @@ export default function App() {
 
     const feedback = [] as string[];
     if (mostCommonMiss.includes('우측미스') || mostCommonMiss.includes('miss right')) {
-      feedback.push('우측으로 미스가 많은 편입니다. 스탠스/임팩트 시 클로즈 페이스를 확인해보세요.');
+      feedback.push('우측으로 미스가 많은 편입니다. 스탠스/임팩트 시 클로즈 페이스를 확인해보세요. (You are missing to the right often; check stance/impact face.)');
     }
     if (mostCommonMiss.includes('좌측미스') || mostCommonMiss.includes('miss left')) {
-      feedback.push('좌측으로 미스가 많은 편입니다. 페이스 각도를 다시 체크해보세요.');
+      feedback.push('좌측으로 미스가 많은 편입니다. 페이스 각도를 다시 체크해보세요. (You are missing to the left often; recheck face angle.)');
     }
     if (mostCommonMiss.includes('짧은') || mostCommonMiss.includes('short')) {
-      feedback.push('거리 부족 미스가 자주 발생합니다. 임팩트 강도와 페이스 컨트롤을 연습하세요.');
+      feedback.push('거리 부족 미스가 자주 발생합니다. 임팩트 강도와 페이스 컨트롤을 연습하세요. (You often miss short; practice impact strength and face control.)');
     }
     if (mostCommonMiss.includes('3퍼팅') || mostCommonMiss.includes('3-putt')) {
-      feedback.push('3퍼팅이 많이 발생합니다. 퍼팅 라인 파악과 거리 감각 연습을 강화하세요.');
+      feedback.push('3퍼팅이 많이 발생합니다. 퍼팅 라인 파악과 거리 감각 연습을 강화하세요. (You are 3-putting often; improve line reading and distance control.)');
     }
 
     return { total, bucketStats, conditionStats, missCounts, feedback, conditionDistanceCounts, madeCount, threePuttCount };
@@ -875,12 +875,14 @@ export default function App() {
               </Box>
 
               <Box sx={{ p: 2, borderRadius: 1, bgcolor: 'rgba(220, 240, 255, 0.7)', mb: 2 }}>
-                <Typography variant="subtitle2">퍼팅 성공/3퍼팅 통계</Typography>
-                <Typography variant="body2" sx={{ mt: 0.5 }}>
-                  퍼팅성공율: <strong>{successRate.toFixed(1)}%</strong> ({stats.madeCount}/{stats.total})
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  퍼팅 성공/3퍼팅 통계 (Putting Success / 3-Putt Stats)
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 0.5 }}>
-                  3퍼팅확율: <strong>{threePuttRate.toFixed(1)}%</strong> ({stats.threePuttCount}/{stats.total})
+                  퍼팅 성공률 (Putting Success Rate): <strong>{successRate.toFixed(1)}%</strong> ({stats.madeCount}/{stats.total})
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  3퍼팅 확률 (3-Putt Rate): <strong>{threePuttRate.toFixed(1)}%</strong> ({stats.threePuttCount}/{stats.total})
                 </Typography>
               </Box>
 
@@ -894,7 +896,7 @@ export default function App() {
                   ))
                 ) : (
                   <Typography variant="body2" sx={{ mt: 0.5 }}>
-                    충분한 데이터가 없습니다. 더 많은 퍼팅 데이터를 추가하세요.
+                    충분한 데이터가 없습니다. 더 많은 퍼팅 데이터를 추가하세요. (Not enough data; add more putting records.)
                   </Typography>
                 )}
               </Box>
@@ -936,7 +938,7 @@ export default function App() {
                 setNewUserPass('');
               }}
             >
-              추가
+              추가 (Add)
             </Button>
           </Box>
 
@@ -953,13 +955,13 @@ export default function App() {
             ))}
             {managedUsers.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                등록된 사용자가 없습니다.
+                등록된 사용자가 없습니다. (No users registered.)
               </Typography>
             )}
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenManager(false)}>닫기</Button>
+          <Button onClick={() => setOpenManager(false)}>닫기 (Close)</Button>
         </DialogActions>
       </Dialog>
     </Box>
