@@ -869,37 +869,46 @@ export default function App() {
   };
 
   const handleResetSession = () => {
-    if (user?.id) {
-      const now = new Date();
-      try {
-        localStorage.setItem(
-          storageKeyFor(user.id),
-          JSON.stringify({
-            greenSpeed,
-            practices,
-            entryTime: entryTime?.toISOString() ?? null,
-            exitTime: now.toISOString(),
-            showAnalysis,
-          }),
-        );
-      } catch {
-        // ignore
-      }
+    // 새 퍼팅 세션을 시작할 때: 현재 로그인 유지, 연습 데이터만 초기화
+    setPractices([]);
+    setEntryTime(new Date());
+    setExitTime(null);
+    setShowAnalysis(false);
+  };
 
-      try {
-        const sessions = loadSessions(user.id).filter(s => s.sessionDate !== user.sessionDate);
-        sessions.push({
-          sessionDate: user.sessionDate,
-          entryTime: entryTime?.toISOString() ?? null,
-          exitTime: now.toISOString(),
+  const handleEndPractice = () => {
+    // 연습 종료 시 세션 저장 후 로그아웃 처리
+    if (!user?.id) return;
+
+    const now = new Date();
+    try {
+      localStorage.setItem(
+        storageKeyFor(user.id),
+        JSON.stringify({
           greenSpeed,
           practices,
+          entryTime: entryTime?.toISOString() ?? null,
+          exitTime: now.toISOString(),
           showAnalysis,
-        });
-        saveSessions(user.id, sessions);
-      } catch {
-        // ignore
-      }
+        }),
+      );
+    } catch {
+      // ignore
+    }
+
+    try {
+      const sessions = loadSessions(user.id).filter(s => s.sessionDate !== user.sessionDate);
+      sessions.push({
+        sessionDate: user.sessionDate,
+        entryTime: entryTime?.toISOString() ?? null,
+        exitTime: now.toISOString(),
+        greenSpeed,
+        practices,
+        showAnalysis,
+      });
+      saveSessions(user.id, sessions);
+    } catch {
+      // ignore
     }
 
     setUser(null);
@@ -980,7 +989,7 @@ export default function App() {
             <Typography variant="subtitle1" gutterBottom>
               퍼팅 입력 (Putting Input)
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 2 }}>
               <Button
                 onClick={() => setGreenSpeed(null)}
                 color="secondary"
@@ -989,14 +998,24 @@ export default function App() {
               >
                 뒤로가기 (Back)
               </Button>
-              <Button
-                onClick={handleResetSession}
-                color="secondary"
-                variant="contained"
-                size="small"
-              >
-                새로운 퍼팅 (New Putting)
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  onClick={handleResetSession}
+                  color="secondary"
+                  variant="contained"
+                  size="small"
+                >
+                  새로운 퍼팅 (New Putting)
+                </Button>
+                <Button
+                  onClick={handleEndPractice}
+                  color="error"
+                  variant="contained"
+                  size="small"
+                >
+                  연습 종료 (End Practice)
+                </Button>
+              </Box>
             </Box>
             <PuttingPracticeForm onSubmit={handlePractice} />
           </CardContent>
