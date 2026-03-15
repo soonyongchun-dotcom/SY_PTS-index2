@@ -296,15 +296,22 @@ export default function App() {
         value: `${rate.toFixed(1)}% (${stat.success}/${stat.total})`,
       };
     });
-    contentWrapper.appendChild(makeTable(conditionRows));
+    if (conditionRows.length > 0) {
+      contentWrapper.appendChild(makeTable(conditionRows));
+    } else {
+      makeRow('조건별 성공률', '데이터 없음');
+    }
 
     makeSectionTitle('베이지안 예측 (Bayesian Estimate)');
     makeRow('온그린 시 평균 퍼팅 개수 예상', bayesScore.toFixed(1));
     makeRow('거리 가중 예측', `${bayesWeightedByDistance.toFixed(1)} (거리별 성공률 기반 가중 평균)`);
-    makeRow('현재 성공률', `${successRate.toFixed(1)}% — ${stats.madeCount}/${stats.total}`);
     if (greenSpeedNum !== null && (greenSpeedNum < 2.7 || greenSpeedNum > 3.0)) {
       makeRow('보정 안내', '그린스피드가 2.7-3.0 범위를 벗어나므로 +10% 보정 적용');
     }
+
+    makeSectionTitle('퍼팅 성공/3퍼팅 통계');
+    makeRow('퍼팅성공율', `${successRate.toFixed(1)}% (${stats.madeCount}/${stats.total})`);
+    makeRow('3퍼팅확율', `${threePuttRate.toFixed(1)}% (${stats.threePuttCount}/${stats.total})`);
 
     if (stats.feedback.length) {
       makeSectionTitle('분석 피드백 (Feedback)');
@@ -840,17 +847,23 @@ export default function App() {
               <Typography variant="subtitle2" sx={{ mt: 2 }}>
                 조건별 성공률 (Success Rate by Condition)
               </Typography>
-              {Object.values(stats.conditionStats).map(stat => {
-                const rate = stat.total ? (stat.success / stat.total) * 100 : 0;
-                return (
-                  <Box key={stat.label} sx={{ mt: 1 }}>
-                    <Typography variant="body2">
-                      {stat.label} - 성공률: {rate.toFixed(1)}% ({stat.success}/{stat.total} 성공/시도)
-                    </Typography>
-                    {renderBar(rate)}
-                  </Box>
-                );
-              })}
+              {Object.values(stats.conditionStats).length === 0 ? (
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  조건별 성공률 데이터가 없습니다.
+                </Typography>
+              ) : (
+                Object.values(stats.conditionStats).map(stat => {
+                  const rate = stat.total ? (stat.success / stat.total) * 100 : 0;
+                  return (
+                    <Box key={stat.label} sx={{ mt: 1 }}>
+                      <Typography variant="body2">
+                        {stat.label} - 성공률: {rate.toFixed(1)}% ({stat.success}/{stat.total} 성공/시도)
+                      </Typography>
+                      {renderBar(rate)}
+                    </Box>
+                  );
+                })
+              )}
 
               <Box sx={{ p: 2, borderRadius: 1, bgcolor: 'rgba(200, 230, 255, 0.7)', mb: 2 }}>
                 <Typography variant="subtitle2">베이지안 예측 (Bayesian Estimate)</Typography>
@@ -860,12 +873,6 @@ export default function App() {
                 <Typography variant="body2" sx={{ mt: 0.5 }}>
                   <strong>거리 가중 예측:</strong> <strong>{bayesWeightedByDistance.toFixed(2)}</strong> (거리별 성공률 기반 가중 평균)
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 0.5 }}>
-                  퍼팅성공율 (퍼팅성공/총퍼팅시도): <strong>{stats.madeCount}/{stats.total}</strong> ({successRate.toFixed(1)}%)
-                </Typography>
-                <Typography variant="body2" sx={{ mt: 0.5 }}>
-                  3퍼팅확율 (3퍼팅수/총퍼팅횟수): <strong>{stats.threePuttCount}/{stats.total}</strong> ({threePuttRate.toFixed(1)}%)
-                </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                   (베이시안 모델: α=1, β=1 사전분포 + 관측 성공/실패 값 기반)
                 </Typography>
@@ -874,6 +881,16 @@ export default function App() {
                     ※ 현재 그린스피드 {greenSpeedNum.toFixed(1)}는 2.7-3.0 범위를 벗어나므로 성공률에 10% 가감 보정이 적용됩니다.
                   </Typography>
                 )}
+              </Box>
+
+              <Box sx={{ p: 2, borderRadius: 1, bgcolor: 'rgba(220, 240, 255, 0.7)', mb: 2 }}>
+                <Typography variant="subtitle2">퍼팅 성공/3퍼팅 통계</Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  퍼팅성공율: <strong>{successRate.toFixed(1)}%</strong> ({stats.madeCount}/{stats.total})
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  3퍼팅확율: <strong>{threePuttRate.toFixed(1)}%</strong> ({stats.threePuttCount}/{stats.total})
+                </Typography>
               </Box>
 
               <Box sx={{ p: 2, borderRadius: 1, bgcolor: 'rgba(255, 240, 240, 0.7)' }}>
