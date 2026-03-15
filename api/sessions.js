@@ -54,7 +54,9 @@ const requireAuth = (req, res) => {
   return payload;
 };
 
-module.exports = async (req, res) => {
+const { createHandler } = require('./netlify');
+
+const handler = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -97,3 +99,6 @@ module.exports = async (req, res) => {
 
   res.status(405).json({ error: 'Method not allowed' });
 };
+
+module.exports = handler;
+exports.handler = createHandler(handler);

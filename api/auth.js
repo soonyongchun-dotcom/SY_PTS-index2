@@ -31,7 +31,9 @@ function sign(payload) {
 const ADMIN_ID = 'csy62';
 const ADMIN_PASSCODE = '1013';
 
-module.exports = async (req, res) => {
+const { createHandler } = require('./netlify');
+
+const handler = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -74,3 +76,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'Authentication failed' });
   }
 };
+
+module.exports = handler;
+exports.handler = createHandler(handler);
+
