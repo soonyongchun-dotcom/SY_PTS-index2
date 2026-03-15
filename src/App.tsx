@@ -61,6 +61,7 @@ export default function App() {
   const [entryTime, setEntryTime] = useState<Date | null>(null);
   const [exitTime, setExitTime] = useState<Date | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const storageKeyFor = (userId: string) => `puttingState:${userId}`;
 
@@ -317,6 +318,72 @@ export default function App() {
 
     if (stats.feedback.length) {
       makeSectionTitle('분석 피드백 (Feedback)');
+      stats.feedback.forEach(line => {
+        const p = document.createElement('div');
+        p.textContent = `• ${line}`;
+        p.style.margin = '2px 0';
+        p.style.fontSize = '12px';
+        contentWrapper.appendChild(p);
+      });
+    }
+
+    document.body.appendChild(contentWrapper);
+    const canvas = await html2canvas(contentWrapper, { scale: 2 });
+    document.body.removeChild(contentWrapper);
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+    const imgProps = pdf.getImageProperties(imgData);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save(`${base}.pdf`);
+  };
+
+  const exportFeedbackPdf = async () => {
+    const base = `${getFileBaseName()}_feedback`;
+    const stats = analyze();
+
+    const contentWrapper = document.createElement('div');
+    contentWrapper.style.position = 'absolute';
+    contentWrapper.style.left = '-9999px';
+    contentWrapper.style.top = '0';
+    contentWrapper.style.width = '900px';
+    contentWrapper.style.padding = '24px';
+    contentWrapper.style.background = 'white';
+    contentWrapper.style.color = '#000';
+    contentWrapper.style.fontFamily = 'sans-serif';
+    contentWrapper.style.lineHeight = '1.5';
+
+    const makeHeading = (text: string) => {
+      const h = document.createElement('h1');
+      h.textContent = text;
+      h.style.margin = '0 0 12px 0';
+      h.style.fontSize = '24px';
+      contentWrapper.appendChild(h);
+    };
+
+    const makeRow = (label: string, value: string) => {
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.justifyContent = 'space-between';
+      row.style.margin = '2px 0';
+      row.style.fontSize = '12px';
+
+      const left = document.createElement('div');
+      left.textContent = label;
+      const right = document.createElement('div');
+      right.textContent = value;
+
+      row.appendChild(left);
+      row.appendChild(right);
+      contentWrapper.appendChild(row);
+    };
+
+    makeHeading('분석 피드백 (Analysis Feedback)');
+    if (!stats.feedback.length) {
+      makeRow('Feedback', '데이터 없음 (No data)');
+    } else {
       stats.feedback.forEach(line => {
         const p = document.createElement('div');
         p.textContent = `• ${line}`;
@@ -856,8 +923,51 @@ export default function App() {
                 })
               )}
 
-              <Box sx={{ p: 2, borderRadius: 1, bgcolor: 'rgba(200, 230, 255, 0.7)', mb: 2 }}>
-                <Typography variant="subtitle2">베이지안 예측 (Bayesian Estimate)</Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                sx={{ mt: 2 }}
+                onClick={() => setShowFeedback(prev => !prev)}
+              >
+                {showFeedback ? '피드백 접기 (Hide Feedback)' : '분석 피드백 보기 (Show Feedback)'}
+              </Button>
+              <Collapse in={showFeedback}>
+                <Box sx={{ p: 2, borderRadius: 1, bgcolor: 'rgba(255, 240, 240, 0.7)', mt: 1 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      분석 피드백 (Feedback)
+                    </Typography>
+                    <Button size="small" variant="outlined" onClick={exportFeedbackPdf}>
+                      피드백 PDF 다운로드 (Download Feedback PDF)
+                    </Button>
+                  </Box>
+
+                  {stats.feedback.length ? (
+                    stats.feedback.map((line, idx) => (
+                      <Typography variant="body2" key={idx} sx={{ mt: 0.5 }}>
+                        - {line}
+                      </Typography>
+                    ))
+                  ) : (
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      충분한 데이터가 없습니다. 더 많은 퍼팅 데이터를 추가하세요. (Not enough data; add more putting records.)
+                    </Typography>
+                  )}
+                </Box>
+              </Collapse>
+
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 1,
+                  bgcolor: 'rgba(200, 220, 255, 0.95)',
+                  border: '1px solid rgba(100, 130, 200, 0.6)',
+                  mb: 2,
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  베이지안 예측 (Bayesian Estimate)
+                </Typography>
                 <Typography variant="body2" sx={{ mt: 0.5 }}>
                   온그린 시 평균 퍼팅 개수 예상: <strong>{bayesScore.toFixed(2)}</strong>
                 </Typography>
@@ -870,33 +980,6 @@ export default function App() {
                 {greenSpeedNum !== null && (greenSpeedNum < 2.7 || greenSpeedNum > 3.0) && (
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                     ※ 현재 그린스피드 {greenSpeedNum.toFixed(1)}는 2.7-3.0 범위를 벗어나므로 성공률에 10% 가감 보정이 적용됩니다.
-                  </Typography>
-                )}
-              </Box>
-
-              <Box sx={{ p: 2, borderRadius: 1, bgcolor: 'rgba(220, 240, 255, 0.7)', mb: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  퍼팅 성공/3퍼팅 통계 (Putting Success / 3-Putt Stats)
-                </Typography>
-                <Typography variant="body2" sx={{ mt: 0.5 }}>
-                  퍼팅 성공률 (Putting Success Rate): <strong>{successRate.toFixed(1)}%</strong> ({stats.madeCount}/{stats.total})
-                </Typography>
-                <Typography variant="body2" sx={{ mt: 0.5 }}>
-                  3퍼팅 확률 (3-Putt Rate): <strong>{threePuttRate.toFixed(1)}%</strong> ({stats.threePuttCount}/{stats.total})
-                </Typography>
-              </Box>
-
-              <Box sx={{ p: 2, borderRadius: 1, bgcolor: 'rgba(255, 240, 240, 0.7)' }}>
-                <Typography variant="subtitle2">분석 피드백 (Feedback)</Typography>
-                {stats.feedback.length ? (
-                  stats.feedback.map((line, idx) => (
-                    <Typography variant="body2" key={idx} sx={{ mt: 0.5 }}>
-                      - {line}
-                    </Typography>
-                  ))
-                ) : (
-                  <Typography variant="body2" sx={{ mt: 0.5 }}>
-                    충분한 데이터가 없습니다. 더 많은 퍼팅 데이터를 추가하세요. (Not enough data; add more putting records.)
                   </Typography>
                 )}
               </Box>
