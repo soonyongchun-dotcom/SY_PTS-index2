@@ -827,10 +827,68 @@ export default function App() {
     return { total, madeCount, threePuttCount, successRate, threePuttRate };
   };
 
+  const getMissSummaryTable = () => {
+    const conditionSet = new Set<string>();
+    const bucketLabels = distanceBuckets.map(b => b.label);
+
+    practices.forEach(p => {
+      p.conditions
+        .map(c => c.trim().split(' ')[0])
+        .filter(Boolean)
+        .forEach(c => conditionSet.add(c));
+    });
+
+    const conditionLabels = Array.from(conditionSet).sort();
+
+    const table: Record<string, Record<string, { success: number; miss: number }>> = {};
+
+    bucketLabels.forEach(label => {
+      table[label] = {};
+      conditionLabels.forEach(cond => {
+        table[label][cond] = { success: 0, miss: 0 };
+      });
+    });
+
+    practices.forEach(p => {
+      const distance = parseFloat(p.distance);
+      const bucket = distanceBuckets.find(b => distance >= b.min && distance < b.max)?.label ?? bucketLabels[bucketLabels.length - 1];
+      const made = isMade(p.result);
+
+      const labels = p.conditions
+        .map(c => c.trim().split(' ')[0])
+        .filter(Boolean);
+      if (labels.length === 0) {
+        // If no condition label, categorize under "기타" (Other)
+        const other = '기타';
+        if (!conditionSet.has(other)) {
+          conditionSet.add(other);
+          conditionLabels.push(other);
+          bucketLabels.forEach(label => {
+            if (!table[label]) table[label] = {};
+            table[label][other] = { success: 0, miss: 0 };
+          });
+        }
+        const entry = table[bucket][other];
+        if (made) entry.success += 1;
+        else entry.miss += 1;
+      } else {
+        labels.forEach(cond => {
+          const entry = table[bucket][cond];
+          if (!entry) return;
+          if (made) entry.success += 1;
+          else entry.miss += 1;
+        });
+      }
+    });
+
+    return { bucketLabels, conditionLabels, table };
+  };
+
   const stats = analyze();
   const greenSpeedNum = greenSpeed ? parseFloat(greenSpeed) : null;
 
   const { total, madeCount, threePuttCount, successRate, threePuttRate } = computeSimpleStats(practices);
+  const missSummary = getMissSummaryTable();
 
   const bayesianEstimate = (success: number, total: number) => {
     const alpha = 1;
@@ -1158,24 +1216,63 @@ export default function App() {
                 </Button>
               </Box>
               <Collapse in={showVisualization}>
-                <Box sx={{ mt: 1, p: 2, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1 }}>
+                <Box sx={{ mt: 1, p: 2, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1, overflowX: 'auto' }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    거리별 성공률 시각화 (Success Rate by Distance)
+                    라이조건별 미스 요약 (Miss Summary by Distance & Lie)
                   </Typography>
-                  {Object.entries(stats.bucketStats).map(([label, stat]) => {
-                    const rate = stat.total ? (stat.success / stat.total) * 100 : 0;
-                    return (
-                      <Box key={label} sx={{ mb: 1 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', mb: 0.5 }}>
-                          <span>{label}</span>
-                          <span>{rate.toFixed(1)}%</span>
+                  <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <Box component="thead">
+                      <Box component="tr">
+                        <Box component="th" sx={{ border: '1px solid rgba(0,0,0,0.15)', p: 1, textAlign: 'left' }}>
+                          거리 / 라이조건
                         </Box>
-                        <Box sx={{ width: '100%', height: 10, bgcolor: '#eee', borderRadius: 1, overflow: 'hidden' }}>
-                          <Box sx={{ width: `${rate}%`, height: '100%', bgcolor: 'primary.main' }} />
-                        </Box>
+                        {missSummary.conditionLabels.map(cond => (
+                          <Box
+                            component="th"
+                            key={cond}
+                            sx={{ border: '1px solid rgba(0,0,0,0.15)', p: 1, textAlign: 'center' }}
+                          >
+                            {cond}
+                          </Box>
+                        ))}
                       </Box>
-                    );
-                  })}
+                    </Box>
+                    <Box component="tbody">
+                      {missSummary.bucketLabels.map(bucket => (
+                        <Box component="tr" key={bucket}>
+                          <Box
+                            component="th"
+                            sx={{ border: '1px solid rgba(0,0,0,0.15)', p: 1, textAlign: 'left', whiteSpace: 'nowrap' }}
+                          >
+                            {bucket}
+                          </Box>
+                          {missSummary.conditionLabels.map(cond => {
+                            const cell = missSummary.table[bucket]?.[cond] ?? { success: 0, miss: 0 };
+                            return (
+                              <Box
+                                component="td"
+                                key={cond}
+                                sx={{
+                                  border: '1px solid rgba(0,0,0,0.15)',
+                                  p: 1,
+                                  textAlign: 'center',
+                                  fontSize: '0.85rem',
+                                  minWidth: 80,
+                                }}
+                              >
+                                <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>
+                                  {cell.success}
+                                </Box>
+                                <Box component="span" sx={{ color: 'error.main', fontWeight: 700, ml: 1 }}>
+                                  {cell.miss}
+                                </Box>
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
                 </Box>
               </Collapse>
               <Collapse in={showFeedback}>
