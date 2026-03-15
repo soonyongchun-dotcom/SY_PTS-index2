@@ -3,6 +3,12 @@
   publish = "docs"
   functions = "api"
 
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
 [dev]
   functions = "api"
   # port = 8888  # optional: set a fixed port if you want
