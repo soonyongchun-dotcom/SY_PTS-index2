@@ -117,6 +117,27 @@ export default function App() {
     }
   };
 
+  const fetchSessionsFromServer = async (userId: string): Promise<StoredSession[]> => {
+    try {
+      const q = encodeURIComponent(`type:session,userId:${userId}`);
+      const resp = await fetch(`${REMOTE_BASE}?q=${q}`);
+      if (!resp.ok) return [];
+      const data = (await resp.json()) as any[];
+      return data
+        .filter(item => item.sessionDate && item.userId === userId)
+        .map(item => ({
+          sessionDate: item.sessionDate,
+          entryTime: item.entryTime,
+          exitTime: item.exitTime,
+          greenSpeed: item.greenSpeed,
+          practices: item.practices ?? [],
+          showAnalysis: item.showAnalysis ?? false,
+        }));
+    } catch {
+      return [];
+    }
+  };
+
   const saveSessions = (userId: string, sessions: StoredSession[]) => {
     try {
       localStorage.setItem(sessionsKeyFor(userId), JSON.stringify(sessions));
@@ -163,26 +184,38 @@ export default function App() {
     saveStateForUser(user.id, user.sessionDate);
   }, [user?.id, user?.sessionDate, greenSpeed, practices, entryTime, exitTime, showAnalysis]);
 
-  const authenticate = async (id: string, passcode: string) => {
-    // 서버리스 인증 함수 호출 (Vercel/Netlify 등에서 /api/auth로 구성)
-    // GitHub Pages처럼 서버리스가 없으면 405 에러가 발생하므로 로컬 방식으로 폴백합니다.
+  const REMOTE_BOX_ID = 'putting-training-box'; // TODO: 실제로 사용하실 box ID로 변경해주세요.
+  const REMOTE_BASE = `https://jsonbox.io/${REMOTE_BOX_ID}`;
+
+  const fetchRemoteUser = async (id: string) => {
     try {
-      const resp = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, passcode }),
-      });
-      if (!resp.ok) throw new Error('인증 실패');
-      const body = await resp.json();
-      return body;
+      const q = encodeURIComponent(`type:user,id:${id}`);
+      const resp = await fetch(`${REMOTE_BASE}?q=${q}`);
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as any[];
+      return data[0] ?? null;
     } catch {
-      // 로컬 인증 방식을 사용 (GitHub Pages 등에서는 /api/auth가 존재하지 않음)
-      const isAdmin = id === ADMIN_ID && passcode === ADMIN_PASSCODE;
-      if (isAdmin) return { isAdmin: true };
-      const match = managedUsers.find(u => u.id === id && u.passcode === passcode);
-      if (match) return { isAdmin: false };
+      return null;
+    }
+  };
+
+  const authenticate = async (id: string, passcode: string) => {
+    // 관리자 계정은 로컬로 체크
+    if (id === ADMIN_ID && passcode === ADMIN_PASSCODE) return { isAdmin: true };
+
+    // 원격 서버에서 사용자 정보를 확인
+    const remoteUser = await fetchRemoteUser(id);
+    if (remoteUser) {
+      if (remoteUser.passcode === passcode) {
+        return { isAdmin: false };
+      }
       throw new Error('ID 또는 Passcode가 올바르지 않습니다.');
     }
+
+    // 원격 사용자가 없으면 로컬 관리 목록을 확인
+    const match = managedUsers.find(u => u.id === id && u.passcode === passcode);
+    if (match) return { isAdmin: false };
+    throw new Error('ID 또는 Passcode가 올바르지 않습니다.');
   };
 
   const handleLogin = async (data: LoginFormData) => {
@@ -206,8 +239,23 @@ export default function App() {
     }
   };
 
-  const openSessionsForUser = (userId: string) => {
-    const sessions = loadSessions(userId).sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
+  const openSessionsForUser = async (userId: string) => {
+    const localSessions = loadSessions(userId);
+    const remoteSessions = await fetchSessionsFromServer(userId);
+
+    const merged = [...localSessions, ...remoteSessions]
+      .reduce<Record<string, StoredSession>>((map, session) => {
+        const existing = map[session.sessionDate];
+        const sessionExit = session.exitTime ? new Date(session.exitTime).getTime() : 0;
+        const existingExit = existing?.exitTime ? new Date(existing.exitTime).getTime() : 0;
+        if (!existing || sessionExit > existingExit) {
+          map[session.sessionDate] = session;
+        }
+        return map;
+      }, {} as Record<string, StoredSession>);
+
+    const sessions = Object.values(merged).sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
+
     setSelectedManagedUser(userId);
     setSelectedUserSessions(sessions);
     setSessionFilter('');
@@ -957,11 +1005,36 @@ export default function App() {
     setShowAnalysis(false);
   };
 
-  const handleEndPractice = () => {
+  const saveSessionToServer = async (userId: string, session: StoredSession) => {
+    try {
+      await fetch(REMOTE_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'session',
+          userId,
+          ...session,
+        }),
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleEndPractice = async () => {
     // 연습 종료 시 세션 저장 후 로그아웃 처리
     if (!user?.id) return;
 
     const now = new Date();
+    const session: StoredSession = {
+      sessionDate: user.sessionDate,
+      entryTime: entryTime?.toISOString() ?? null,
+      exitTime: now.toISOString(),
+      greenSpeed,
+      practices,
+      showAnalysis,
+    };
+
     try {
       localStorage.setItem(
         storageKeyFor(user.id),
@@ -979,15 +1052,9 @@ export default function App() {
 
     try {
       const sessions = loadSessions(user.id).filter(s => s.sessionDate !== user.sessionDate);
-      sessions.push({
-        sessionDate: user.sessionDate,
-        entryTime: entryTime?.toISOString() ?? null,
-        exitTime: now.toISOString(),
-        greenSpeed,
-        practices,
-        showAnalysis,
-      });
+      sessions.push(session);
       saveSessions(user.id, sessions);
+      await saveSessionToServer(user.id, session);
     } catch {
       // ignore
     }
