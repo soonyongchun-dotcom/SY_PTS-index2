@@ -94,6 +94,15 @@ module.exports = async (req, res) => {
       if (!body.id || !body.passcode) {
         return res.status(400).json({ error: 'id and passcode are required' });
       }
+
+      // 이미 존재하는 사용자 확인
+      const q = encodeURIComponent(`type:user,id:${body.id}`);
+      const checkResp = await fetch(`${JSONBOX_BASE}?q=${q}`);
+      const existing = await checkResp.json();
+      if (existing.length > 0) {
+        return res.status(409).json({ error: 'User already exists' });
+      }
+
       const salt = crypto.randomBytes(16).toString('hex');
       const hash = crypto
         .pbkdf2Sync(body.passcode, salt, 310000, 32, 'sha256')

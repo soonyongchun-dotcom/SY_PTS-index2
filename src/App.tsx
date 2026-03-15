@@ -355,12 +355,23 @@ export default function App() {
   };
 
   const handleAddUser = async (id: string, passcode: string) => {
-    const ok = await createUserOnServer(id, passcode);
-    if (ok) {
+    const resp = await fetch('/api/user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ id, passcode }),
+    });
+    if (resp.ok) {
       await refreshUsers();
-    } else {
-      alert('사용자 등록에 실패했습니다.');
+      return;
     }
+
+    const data = await resp.json().catch(() => null);
+    if (resp.status === 409) {
+      alert('이미 존재하는 사용자입니다.');
+      return;
+    }
+
+    alert(data?.error || '사용자 등록에 실패했습니다.');
   };
 
   const handleRemoveUser = async (id: string) => {
