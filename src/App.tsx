@@ -206,10 +206,36 @@ export default function App() {
   };
 
 
+  const fetchUsersFromServer = async (): Promise<Array<{ id: string }>> => {
+    if (!authToken) return [];
+    try {
+      const resp = await fetch('/api/user?list=true', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!resp.ok) return [];
+      const data = (await resp.json()) as any[];
+      return data.map(user => ({ id: user.id }));
+    } catch {
+      return [];
+    }
+  };
+
+  const refreshUsers = async () => {
+    const serverUsers = await fetchUsersFromServer();
+    if (serverUsers.length > 0) {
+      setManagedUsers(serverUsers.map(u => ({ id: u.id, passcode: '********' })));
+    }
+  };
+
   const handleLogin = async (data: LoginFormData) => {
     const result = await authenticate(data.id, data.passcode);
     setAuthToken(result.token ?? null);
     setUser({ id: data.id, sessionDate: data.sessionDate, isAdmin: !!result.isAdmin });
+
+    // 관리자 로그인 시 서버 사용자 목록을 자동으로 불러옵니다.
+    if (result.isAdmin) {
+      refreshUsers();
+    }
 
     const sessions = loadSessions(data.id);
     const stored = sessions.find(s => s.sessionDate === data.sessionDate);
@@ -301,35 +327,49 @@ export default function App() {
     }
   };
 
-  const handleAddUser = (id: string, passcode: string) => {
-    setManagedUsers(prev => {
-      const existingIndex = prev.findIndex(u => u.id === id);
-      let next;
-      if (existingIndex >= 0) {
-        next = [...prev];
-        next[existingIndex] = { id, passcode };
-      } else {
-        next = [...prev, { id, passcode }];
-      }
-      try {
-        localStorage.setItem('managedUsers', JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
+  const createUserOnServer = async (id: string, passcode: string) => {
+    if (!authToken) return false;
+    try {
+      const resp = await fetch('/api/user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ id, passcode }),
+      });
+      return resp.ok;
+    } catch {
+      return false;
+    }
   };
 
-  const handleRemoveUser = (id: string) => {
-    setManagedUsers(prev => {
-      const next = prev.filter(u => u.id !== id);
-      try {
-        localStorage.setItem('managedUsers', JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
+  const deleteUserOnServer = async (id: string) => {
+    if (!authToken) return false;
+    try {
+      const resp = await fetch(`/api/user?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      return resp.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleAddUser = async (id: string, passcode: string) => {
+    const ok = await createUserOnServer(id, passcode);
+    if (ok) {
+      await refreshUsers();
+    } else {
+      alert('사용자 등록에 실패했습니다.');
+    }
+  };
+
+  const handleRemoveUser = async (id: string) => {
+    const ok = await deleteUserOnServer(id);
+    if (ok) {
+      await refreshUsers();
+    } else {
+      alert('사용자 삭제에 실패했습니다.');
+    }
   };
 
   const backgroundUrl =
