@@ -25,6 +25,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import Tooltip from '@mui/material/Tooltip';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -72,6 +73,7 @@ export default function App() {
   const [exitTime, setExitTime] = useState<Date | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [compareSessionDates, setCompareSessionDates] = useState<string[]>([]);
   const [selectedManagedUser, setSelectedManagedUser] = useState<string | null>(null);
   const [selectedUserSessions, setSelectedUserSessions] = useState<StoredSession[]>([]);
   const [openSessionDialog, setOpenSessionDialog] = useState(false);
@@ -206,7 +208,16 @@ export default function App() {
     const sessions = loadSessions(userId).sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
     setSelectedManagedUser(userId);
     setSelectedUserSessions(sessions);
+    setCompareSessionDates([]);
     setOpenSessionDialog(true);
+  };
+
+  const toggleCompareSession = (sessionDate: string) => {
+    setCompareSessionDates(prev => {
+      if (prev.includes(sessionDate)) return prev.filter(d => d !== sessionDate);
+      if (prev.length >= 2) return [prev[1], sessionDate];
+      return [...prev, sessionDate];
+    });
   };
 
   const loadSessionIntoView = (userId: string, session: StoredSession) => {
@@ -800,10 +811,25 @@ export default function App() {
     return { total, bucketStats, conditionStats, missCounts, feedback, conditionDistanceCounts, madeCount, threePuttCount };
   };
 
+  const computeSimpleStats = (practicesToAnalyze: Practice[]) => {
+    const total = practicesToAnalyze.length;
+    let madeCount = 0;
+    let threePuttCount = 0;
+
+    practicesToAnalyze.forEach(p => {
+      if (isMade(p.result)) madeCount += 1;
+      if (isThreePutt(p.result)) threePuttCount += 1;
+    });
+
+    const successRate = total ? (madeCount / total) * 100 : 0;
+    const threePuttRate = total ? (threePuttCount / total) * 100 : 0;
+    return { total, madeCount, threePuttCount, successRate, threePuttRate };
+  };
+
   const stats = analyze();
   const greenSpeedNum = greenSpeed ? parseFloat(greenSpeed) : null;
 
-  const threePuttRate = stats.total ? (stats.threePuttCount / stats.total) * 100 : 0;
+  const { total, madeCount, threePuttCount, successRate, threePuttRate } = computeSimpleStats(practices);
 
   const bayesianEstimate = (success: number, total: number) => {
     const alpha = 1;
@@ -819,7 +845,6 @@ export default function App() {
     return 1 + 2 * (1 - p);
   };
   const bayesScore = bayesianEstimate(stats.madeCount, stats.total);
-  const successRate = stats.total ? (stats.madeCount / stats.total) * 100 : 0;
 
   // 거리별 베이지안 예측을 전체에 가중평균으로 반영
   const bayesWeightedByDistance = stats.total
@@ -1218,7 +1243,15 @@ export default function App() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openSessionDialog} onClose={() => setOpenSessionDialog(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={openSessionDialog}
+        onClose={() => {
+          setOpenSessionDialog(false);
+          setCompareSessionDates([]);
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>세션 기록 {selectedManagedUser ? `- ${selectedManagedUser}` : ''}</DialogTitle>
         <DialogContent>
           {selectedUserSessions.length === 0 ? (
@@ -1226,30 +1259,114 @@ export default function App() {
               세션 기록이 없습니다. (No session records.)
             </Typography>
           ) : (
-            <List dense>
-              {selectedUserSessions.map(session => (
-                <ListItem key={session.sessionDate} sx={{ pl: 0 }}>
-                  <ListItemText
-                    primary={session.sessionDate}
-                    secondary={`로그인: ${session.entryTime ?? '-'} / 로그아웃: ${session.exitTime ?? '-'}`}
-                  />
-                  <ListItemSecondaryAction>
-                    <Button
-                      size="small"
-                      onClick={() => selectedManagedUser && loadSessionIntoView(selectedManagedUser, session)}
+            <>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="subtitle2">세션 목록 (비교할 세션을 2개 선택하세요)</Typography>
+                {compareSessionDates.length > 0 && (
+                  <Button size="small" onClick={() => setCompareSessionDates([])}>
+                    비교 초기화
+                  </Button>
+                )}
+              </Box>
+
+              <List dense>
+                {selectedUserSessions.map(session => {
+                  const isCompared = compareSessionDates.includes(session.sessionDate);
+                  return (
+                    <ListItem
+                      key={session.sessionDate}
+                      sx={{
+                        pl: 0,
+                        bgcolor: isCompared ? 'rgba(25, 118, 210, 0.08)' : 'inherit',
+                      }}
                     >
-                      불러오기
-                    </Button>
-                    <IconButton
-                      size="small"
-                      onClick={() => selectedManagedUser && deleteSessionForUser(selectedManagedUser, session.sessionDate)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
-            </List>
+                      <ListItemText
+                        primary={session.sessionDate}
+                        secondary={`로그인: ${session.entryTime ?? '-'} / 로그아웃: ${session.exitTime ?? '-'}`}
+                      />
+                      <ListItemSecondaryAction>
+                        <Button
+                          size="small"
+                          onClick={() => selectedManagedUser && loadSessionIntoView(selectedManagedUser, session)}
+                        >
+                          불러오기
+                        </Button>
+                        <IconButton
+                          size="small"
+                          color={isCompared ? 'primary' : 'default'}
+                          onClick={e => {
+                            e.stopPropagation();
+                            toggleCompareSession(session.sessionDate);
+                          }}
+                          title="비교 대상 추가/제거"
+                        >
+                          <CompareArrowsIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => selectedManagedUser && deleteSessionForUser(selectedManagedUser, session.sessionDate)}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  );
+                })}
+              </List>
+
+              {compareSessionDates.length > 0 && (
+                <Box sx={{ mt: 2, p: 2, border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    세션 비교
+                  </Typography>
+                  {compareSessionDates.length === 2 ? (
+                    (() => {
+                      const compareSessions = selectedUserSessions.filter(s =>
+                        compareSessionDates.includes(s.sessionDate),
+                      );
+                      const getMetrics = (session: StoredSession) => {
+                        const { total, successRate, threePuttRate } = computeSimpleStats(session.practices ?? []);
+                        return { total, successRate, threePuttRate };
+                      };
+
+                      return (
+                        <Box sx={{ display: 'flex', gap: 2 }}>
+                          {compareSessions.map(session => {
+                            const metrics = getMetrics(session);
+                            return (
+                              <Box key={session.sessionDate} sx={{ flex: 1, p: 1, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1 }}>
+                                <Typography variant="subtitle2">{session.sessionDate}</Typography>
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                  총 퍼팅: {metrics.total}
+                                </Typography>
+                                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                  성공률: {metrics.successRate.toFixed(1)}%
+                                </Typography>
+                                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                  3퍼팅률: {metrics.threePuttRate.toFixed(1)}%
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ mt: 1 }}
+                                  onClick={() => selectedManagedUser && loadSessionIntoView(selectedManagedUser, session)}
+                                >
+                                  이 세션 보기
+                                </Button>
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      );
+                    })()
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      비교하려면 두 개의 세션을 선택하세요.
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </>
           )}
         </DialogContent>
         <DialogActions>
