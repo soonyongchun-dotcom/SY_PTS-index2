@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
-import LoginForm, { LoginFormData, ADMIN_ID, ADMIN_PASSCODE } from '../LoginForm';
-import GreenSpeedForm from '../GreenSpeedForm';
-import PuttingPracticeForm, { PracticeInput } from '../PuttingPracticeForm';
+import LoginForm, { LoginFormData, ADMIN_ID, ADMIN_PASSCODE } from './LoginForm';
+import GreenSpeedForm from './GreenSpeedForm';
+import PuttingPracticeForm, { PracticeInput } from './PuttingPracticeForm';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -62,6 +62,7 @@ export default function App() {
 
   const authenticate = async (id: string, passcode: string) => {
     // 서버리스 인증 함수 호출 (Vercel/Netlify 등에서 /api/auth로 구성)
+    // GitHub Pages처럼 서버리스가 없으면 405 에러가 발생하므로 로컬 방식으로 폴백합니다.
     try {
       const resp = await fetch('/api/auth', {
         method: 'POST',
@@ -72,7 +73,7 @@ export default function App() {
       const body = await resp.json();
       return body;
     } catch {
-      // 로컬 개발 및 서버리스 미사용 시 기본 로컬 인증 방식 유지
+      // 로컬 인증 방식을 사용 (GitHub Pages 등에서는 /api/auth가 존재하지 않음)
       const isAdmin = id === ADMIN_ID && passcode === ADMIN_PASSCODE;
       if (isAdmin) return { isAdmin: true };
       const match = managedUsers.find(u => u.id === id && u.passcode === passcode);
@@ -119,7 +120,7 @@ export default function App() {
   };
 
   const backgroundUrl =
-    '/background.jpg';
+    './background.jpg';
 
   const sanitizeFileName = (input: string) =>
     input.replace(/[^a-zA-Z0-9-_]/g, '_').replace(/_+/g, '_');
