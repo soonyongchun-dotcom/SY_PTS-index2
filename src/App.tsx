@@ -73,6 +73,7 @@ export default function App() {
   const [exitTime, setExitTime] = useState<Date | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showVisualization, setShowVisualization] = useState(false);
   const [compareSessionDates, setCompareSessionDates] = useState<string[]>([]);
   const [selectedManagedUser, setSelectedManagedUser] = useState<string | null>(null);
   const [selectedUserSessions, setSelectedUserSessions] = useState<StoredSession[]>([]);
@@ -1140,14 +1141,43 @@ export default function App() {
                 </Typography>
               </Box>
 
-              <Button
-                variant="outlined"
-                size="small"
-                sx={{ mt: 2 }}
-                onClick={() => setShowFeedback(prev => !prev)}
-              >
-                {showFeedback ? '피드백 접기 (Hide Feedback)' : '분석 피드백 보기 (Show Feedback)'}
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => setShowVisualization(prev => !prev)}
+                >
+                  {showVisualization ? '시각화 접기 (Hide Chart)' : '시각화 보기 (Show Chart)'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => setShowFeedback(prev => !prev)}
+                >
+                  {showFeedback ? '피드백 접기 (Hide Feedback)' : '분석 피드백 보기 (Show Feedback)'}
+                </Button>
+              </Box>
+              <Collapse in={showVisualization}>
+                <Box sx={{ mt: 1, p: 2, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                    거리별 성공률 시각화 (Success Rate by Distance)
+                  </Typography>
+                  {Object.entries(stats.bucketStats).map(([label, stat]) => {
+                    const rate = stat.total ? (stat.success / stat.total) * 100 : 0;
+                    return (
+                      <Box key={label} sx={{ mb: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', mb: 0.5 }}>
+                          <span>{label}</span>
+                          <span>{rate.toFixed(1)}%</span>
+                        </Box>
+                        <Box sx={{ width: '100%', height: 10, bgcolor: '#eee', borderRadius: 1, overflow: 'hidden' }}>
+                          <Box sx={{ width: `${rate}%`, height: '100%', bgcolor: 'primary.main' }} />
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Collapse>
               <Collapse in={showFeedback}>
                 <Box sx={{ p: 2, borderRadius: 1, bgcolor: 'rgba(255, 240, 240, 0.7)', mt: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
