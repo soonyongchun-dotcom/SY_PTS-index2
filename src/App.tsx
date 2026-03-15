@@ -1070,6 +1070,13 @@ export default function App() {
   return (
     <Box sx={{ pt: '84px', pb: 4, minHeight: '100vh', background: 'rgba(255,255,255,0.85)' }}>
       <Header />
+      {user && (
+        <Box sx={{ position: 'fixed', top: HEADER_HEIGHT + 8, left: 16, zIndex: 1400 }}>
+          <Typography variant="caption" color="common.white">
+            로그인 사용자: {user.id} {user.isAdmin ? '(관리자)' : ''}
+          </Typography>
+        </Box>
+      )}
       {user?.isAdmin && (
         <Box sx={{ position: 'fixed', top: HEADER_HEIGHT + 8, right: 16, zIndex: 1400, display: 'flex', gap: 1 }}>
           <Tooltip title="선수관리">
