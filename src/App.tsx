@@ -80,32 +80,14 @@ export default function App() {
   };
 
   const authenticate = async (id: string, passcode: string) => {
-    // 관리자 인증은 서버에서 처리합니다.
-    // 서버가 응답하지 않거나 관리자 인증이 실패하면 로컬 Firestore 사용자로 대체합니다.
-    try {
-      const resp = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, passcode }),
-      });
-
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.isAdmin) {
-          return { isAdmin: true, token: data.token ?? 'ADMIN_TOKEN' };
-        }
-      }
-    } catch (e) {
-      // 서버 호출 실패 시 로컬 인증으로 폴백
-      console.warn('Admin auth server unavailable, falling back to local auth', e);
-    }
-
+    // Firebase Hosting 무료 플랜에서는 서버리스 함수가 동작하지 않기 때문에,
+    // 관리자 여부는 Firestore에 저장된 사용자 정보에서 확인합니다.
     const user = await getUserById(id);
     if (!user || user.passcode !== passcode) {
       throw new Error('ID 또는 Passcode가 올바르지 않습니다.');
     }
 
-    return { isAdmin: false, token: 'USER_TOKEN' };
+    return { isAdmin: !!user.isAdmin, token: 'USER_TOKEN' };
   };
 
 

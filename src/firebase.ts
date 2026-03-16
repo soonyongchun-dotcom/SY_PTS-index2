@@ -68,6 +68,7 @@ export interface StoredSession {
 export interface StoredUser {
   id: string;
   passcode: string;
+  isAdmin?: boolean;
 }
 
 const usersCollection = () => collection(db, "users");
@@ -99,14 +100,14 @@ const storedSessionConverter: FirestoreDataConverter<StoredSession> = {
 /**
  * Create a new user. Returns true if created successfully, false if already exists.
  */
-export async function createUser(id: string, passcode: string): Promise<boolean> {
+export async function createUser(id: string, passcode: string, isAdmin = false): Promise<boolean> {
   try {
     const userDoc = doc(usersCollection(), id);
     const snapshot = await getDoc(userDoc);
     if (snapshot.exists()) {
       return false;
     }
-    await setDoc(userDoc, { id, passcode });
+    await setDoc(userDoc, { id, passcode, isAdmin });
     return true;
   } catch (e) {
     console.error("Firestore createUser failed", e);
@@ -143,7 +144,7 @@ export async function getUserById(id: string): Promise<StoredUser | null> {
     const snapshot = await getDoc(userDoc);
     if (!snapshot.exists()) return null;
     const data = snapshot.data();
-    return { id: data.id, passcode: data.passcode };
+    return { id: data.id, passcode: data.passcode, isAdmin: !!data.isAdmin };
   } catch (e) {
     console.warn("Firestore getUserById failed", e);
     return null;
@@ -158,7 +159,7 @@ export async function listUsers(): Promise<StoredUser[]> {
     const snapshot = await getDocs(usersCollection());
     return snapshot.docs.map(doc => {
       const data = doc.data() as any;
-      return { id: data.id, passcode: data.passcode };
+      return { id: data.id, passcode: data.passcode, isAdmin: !!data.isAdmin };
     });
   } catch (e) {
     console.warn("Firestore listUsers failed", e);
