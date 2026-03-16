@@ -15,64 +15,47 @@
 //    }
 //    (This allows any browser to read/write. For production, lock this down with auth.)
 
-import { initializeApp } from 'firebase/app';
+import { initializeApp } from "firebase/app";
 import {
-  getFirestore,
   collection,
-  getDocs,
-  query,
-  where,
-  addDoc,
-  doc,
-  setDoc,
-  getDoc,
   deleteDoc,
-  collectionGroup,
-} from 'firebase/firestore';
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  enableIndexedDbPersistence,
+  FirestoreDataConverter,
+} from "firebase/firestore";
+import { getAuth, signInAnonymously } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: 'REPLACE_ME',
-  authDomain: 'REPLACE_ME',
-  projectId: 'REPLACE_ME',
-  storageBucket: 'REPLACE_ME',
-  messagingSenderId: 'REPLACE_ME',
-  appId: 'REPLACE_ME',
+  apiKey: "AIzaSyCAoRE0tu8asTVOiKOJvkswBvjR6e2DCm4",
+  authDomain: "sy-puttingtraining.firebaseapp.com",
+  projectId: "sy-puttingtraining",
+  storageBucket: "sy-puttingtraining.firebasestorage.app",
+  messagingSenderId: "381426792057",
+  appId: "1:381426792057:web:39a4d494d163a09d3c46a8",
+  measurementId: "G-PGCCC5DMTZ"
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+const db = getFirestore(app);
 
-// Users collection helpers
-const usersCol = collection(db, 'users');
-const sessionsCol = collection(db, 'sessions');
+// Make sure we have an authenticated user (anonymous) so Firestore security rules can apply.
+// This is required because rules now require request.auth != null.
+const auth = getAuth(app);
+signInAnonymously(auth).catch(() => {
+  // ignore - app can continue even if anonymous sign-in fails
+});
 
-export const listUsers = async (): Promise<Array<{ id: string }>> => {
-  const snap = await getDocs(usersCol);
-  return snap.docs.map(d => ({ id: d.data().id }));
-};
+// Enable offline persistence when possible (reduces errors when network is unstable).
+// If persistence cannot be enabled, we ignore the error and continue.
+enableIndexedDbPersistence(db).catch(() => {
+  // ignore - persistence is optional
+});
 
-export const getUserById = async (id: string) => {
-  const q = query(usersCol, where('id', '==', id));
-  const snap = await getDocs(q);
-  return snap.docs[0]?.data();
-};
-
-export const createUser = async (id: string, passcode: string) => {
-  const existing = await getUserById(id);
-  if (existing) return false;
-  await addDoc(usersCol, { id, passcode });
-  return true;
-};
-
-export const deleteUser = async (id: string) => {
-  const q = query(usersCol, where('id', '==', id));
-  const snap = await getDocs(q);
-  if (snap.empty) return false;
-  await deleteDoc(doc(db, 'users', snap.docs[0].id));
-  return true;
-};
-
-export type StoredSession = {
+export interface StoredSession {
   userId: string;
   sessionDate: string;
   entryTime: string | null;
@@ -80,21 +63,140 @@ export type StoredSession = {
   greenSpeed: string | null;
   practices: any[];
   showAnalysis: boolean;
+}
+
+export interface StoredUser {
+  id: string;
+  passcode: string;
+}
+
+const usersCollection = () => collection(db, "users");
+const userSessionsCollection = (userId: string) => collection(db, "users", userId, "sessions");
+
+const sessionDocId = (sessionDate: string) =>
+  sessionDate.replace(/[\\/\\\\#\?\s]/g, "_");
+
+const storedSessionConverter: FirestoreDataConverter<StoredSession> = {
+  toFirestore(session: StoredSession) {
+    return {
+      ...session,
+    };
+  },
+  fromFirestore(snapshot) {
+    const data = snapshot.data();
+    return {
+      userId: data.userId,
+      sessionDate: data.sessionDate,
+      entryTime: data.entryTime ?? null,
+      exitTime: data.exitTime ?? null,
+      greenSpeed: data.greenSpeed ?? null,
+      practices: Array.isArray(data.practices) ? data.practices : [],
+      showAnalysis: !!data.showAnalysis,
+    };
+  },
 };
 
-export const listSessions = async (userId: string): Promise<StoredSession[]> => {
-  const q = query(sessionsCol, where('userId', '==', userId));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => d.data() as StoredSession);
-};
+/**
+ * Create a new user. Returns true if created successfully, false if already exists.
+ */
+export async function createUser(id: string, passcode: string): Promise<boolean> {
+  try {
+    const userDoc = doc(usersCollection(), id);
+    const snapshot = await getDoc(userDoc);
+    if (snapshot.exists()) {
+      return false;
+    }
+    await setDoc(userDoc, { id, passcode });
+    return true;
+  } catch (e) {
+    console.error("Firestore createUser failed", e);
+    throw new Error("사용자 등록 중 오류가 발생했습니다. 콘솔을 확인하세요.");
+  }
+}
 
-export const saveSession = async (session: StoredSession) => {
-  // Use userId + sessionDate as doc id so we can overwrite.
-  const id = `${session.userId}__${session.sessionDate}`;
-  await setDoc(doc(db, 'sessions', id), session);
-};
+/**
+ * Delete a user and their sessions.
+ */
+export async function deleteUser(id: string): Promise<boolean> {
+  const userDoc = doc(usersCollection(), id);
+  const snapshot = await getDoc(userDoc);
+  if (!snapshot.exists()) {
+    return false;
+  }
 
-export const deleteSession = async (userId: string, sessionDate: string) => {
-  const id = `${userId}__${sessionDate}`;
-  await deleteDoc(doc(db, 'sessions', id));
-};
+  // delete user sessions (best-effort)
+  const sessionsSnap = await getDocs(userSessionsCollection(id));
+  await Promise.all(
+    sessionsSnap.docs.map(s => deleteDoc(doc(userSessionsCollection(id), s.id)))
+  );
+
+  await deleteDoc(userDoc);
+  return true;
+}
+
+/**
+ * Get a user by id.
+ */
+export async function getUserById(id: string): Promise<StoredUser | null> {
+  try {
+    const userDoc = doc(usersCollection(), id);
+    const snapshot = await getDoc(userDoc);
+    if (!snapshot.exists()) return null;
+    const data = snapshot.data();
+    return { id: data.id, passcode: data.passcode };
+  } catch (e) {
+    console.warn("Firestore getUserById failed", e);
+    return null;
+  }
+}
+
+/**
+ * List all users.
+ */
+export async function listUsers(): Promise<StoredUser[]> {
+  try {
+    const snapshot = await getDocs(usersCollection());
+    return snapshot.docs.map(doc => {
+      const data = doc.data() as any;
+      return { id: data.id, passcode: data.passcode };
+    });
+  } catch (e) {
+    console.warn("Firestore listUsers failed", e);
+    return [];
+  }
+}
+
+/**
+ * Save or update a session entry.
+ */
+export async function saveSession(session: StoredSession): Promise<void> {
+  const docRef = doc(userSessionsCollection(session.userId), sessionDocId(session.sessionDate)).withConverter(
+    storedSessionConverter
+  );
+  await setDoc(docRef, session);
+}
+
+/**
+ * List all sessions for a user.
+ */
+export async function listSessions(userId: string): Promise<StoredSession[]> {
+  try {
+    const sessionsRef = userSessionsCollection(userId).withConverter(storedSessionConverter);
+    const snapshot = await getDocs(sessionsRef);
+    return snapshot.docs.map(doc => doc.data());
+  } catch (e) {
+    console.warn("Firestore listSessions failed", e);
+    return [];
+  }
+}
+
+/**
+ * Delete a specific session for a user.
+ */
+export async function deleteSession(userId: string, sessionDate: string): Promise<void> {
+  const docRef = doc(userSessionsCollection(userId), sessionDocId(sessionDate));
+  await deleteDoc(docRef);
+}
+
+export { db };
+

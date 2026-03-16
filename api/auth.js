@@ -7,6 +7,10 @@ const JSONBOX_BASE = `https://jsonbox.io/${BOX_ID}`;
 const SECRET = process.env.JWT_SECRET || 'change-me-please';
 const crypto = require('crypto');
 
+if (!process.env.JWT_SECRET) {
+  console.warn('JWT_SECRET is not set. Using default secret; tokens can be forged if deployed publicly.');
+}
+
 function base64UrlEncode(input) {
   return Buffer.from(input)
     .toString('base64')
@@ -28,8 +32,12 @@ function sign(payload) {
   return `${header}.${body}.${signature}`;
 }
 
-const ADMIN_ID = 'csy62';
-const ADMIN_PASSCODE = '1013';
+const ADMIN_ID = process.env.ADMIN_ID || 'csy62';
+const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || '1013';
+
+if (!process.env.ADMIN_ID || !process.env.ADMIN_PASSCODE) {
+  console.warn('ADMIN_ID / ADMIN_PASSCODE are not set. Using default admin credentials from source.');
+}
 
 const { createHandler } = require('./netlify');
 

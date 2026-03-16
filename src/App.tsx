@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
-import LoginForm, { LoginFormData, ADMIN_ID, ADMIN_PASSCODE } from './LoginForm';
+import LoginForm, { LoginFormData } from './LoginForm';
 import {
   createUser,
   deleteUser,
@@ -80,9 +80,24 @@ export default function App() {
   };
 
   const authenticate = async (id: string, passcode: string) => {
-    // 관리자 계정은 로컬로 체크 (토큰 발급)
-    if (id === ADMIN_ID && passcode === ADMIN_PASSCODE) {
-      return { isAdmin: true, token: 'ADMIN_TOKEN' };
+    // 관리자 인증은 서버에서 처리합니다.
+    // 서버가 응답하지 않거나 관리자 인증이 실패하면 로컬 Firestore 사용자로 대체합니다.
+    try {
+      const resp = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, passcode }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.isAdmin) {
+          return { isAdmin: true, token: data.token ?? 'ADMIN_TOKEN' };
+        }
+      }
+    } catch (e) {
+      // 서버 호출 실패 시 로컬 인증으로 폴백
+      console.warn('Admin auth server unavailable, falling back to local auth', e);
     }
 
     const user = await getUserById(id);
@@ -136,6 +151,66 @@ export default function App() {
   const refreshSessions = async (userId: string) => {
     const sessions = await listSessions(userId);
     setSelectedUserSessions(sessions);
+  };
+
+  const exportSessions = async (userId: string) => {
+    const sessions = await listSessions(userId);
+    const data = {
+      userId,
+      exportedAt: new Date().toISOString(),
+      sessions,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${userId}_sessions_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const importSessions = async (userId: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async e => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const text = reader.result as string;
+          const parsed = JSON.parse(text);
+          const sessions: StoredSession[] = [];
+          if (Array.isArray(parsed)) {
+            // Legacy format: array of sessions
+            sessions.push(...parsed);
+          } else if (parsed && Array.isArray(parsed.sessions)) {
+            sessions.push(...parsed.sessions);
+          } else {
+            alert('올바른 세션 백업 파일이 아닙니다. (Invalid session backup file.)');
+            return;
+          }
+
+          let imported = 0;
+          for (const session of sessions) {
+            if (!session.userId) session.userId = userId;
+            if (!session.sessionDate) continue;
+            await saveSession(session);
+            imported += 1;
+          }
+          await refreshSessions(userId);
+          alert(`세션을 가져왔습니다: ${imported}개`);
+        } catch (err) {
+          console.error(err);
+          alert('세션 가져오기 중 오류가 발생했습니다. (Failed to import sessions.)');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   };
 
   const openSessionsForUser = async (userId: string) => {
@@ -195,12 +270,17 @@ export default function App() {
   };
 
   const handleAddUser = async (id: string, passcode: string) => {
-    const ok = await createUserOnServer(id, passcode);
-    if (ok) {
-      await refreshUsers();
-      return;
+    try {
+      const ok = await createUserOnServer(id, passcode);
+      if (ok) {
+        await refreshUsers();
+        return;
+      }
+      alert('이미 존재하는 사용자입니다.');
+    } catch (e) {
+      console.error('createUser 오류', e);
+      alert(String(e) || '사용자 등록 중 오류가 발생했습니다.');
     }
-    alert('이미 존재하는 사용자입니다.');
   };
 
   const handleRemoveUser = async (id: string) => {
@@ -1384,9 +1464,17 @@ export default function App() {
                   onChange={e => setSessionFilter(e.target.value)}
                   sx={{ width: 180 }}
                 />
-                <Button size="small" onClick={() => setCompareSessionDates([])}>
-                  비교 초기화
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Button size="small" onClick={() => selectedManagedUser && exportSessions(selectedManagedUser)}>
+                    세션 내보내기
+                  </Button>
+                  <Button size="small" onClick={() => selectedManagedUser && importSessions(selectedManagedUser)}>
+                    세션 가져오기
+                  </Button>
+                  <Button size="small" onClick={() => setCompareSessionDates([])}>
+                    비교 초기화
+                  </Button>
+                </Box>
               </Box>
 
               <List dense>
@@ -1466,12 +1554,21 @@ export default function App() {
                     const { total, successRate, threePuttRate } = computeSimpleStats(session.practices ?? []);
                     return { total, successRate, threePuttRate };
                   };
+                  const metricsList = compareSessions.map(session => ({
+                    session,
+                    metrics: getMetrics(session),
+                  }));
+
+                  const delta = {
+                    total: metricsList[0].metrics.total - metricsList[1].metrics.total,
+                    successRate: metricsList[0].metrics.successRate - metricsList[1].metrics.successRate,
+                    threePuttRate: metricsList[0].metrics.threePuttRate - metricsList[1].metrics.threePuttRate,
+                  };
 
                   return (
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                      {compareSessions.map(session => {
-                        const metrics = getMetrics(session);
-                        return (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <Box sx={{ display: 'flex', gap: 2 }}>
+                        {metricsList.map(({ session, metrics }) => (
                           <Box key={session.sessionDate} sx={{ flex: 1, p: 1, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1 }}>
                             <Typography variant="subtitle2">{session.sessionDate}</Typography>
                             <Typography variant="body2" sx={{ mt: 1 }}>
@@ -1492,8 +1589,21 @@ export default function App() {
                               이 세션 보기
                             </Button>
                           </Box>
-                        );
-                      })}
+                        ))}
+                      </Box>
+
+                      <Box sx={{ p: 1, border: '1px dashed rgba(0,0,0,0.2)', borderRadius: 1 }}>
+                        <Typography variant="subtitle2">비교 요약 (첫 번째 - 두 번째)</Typography>
+                        <Typography variant="body2" sx={{ mt: 1 }}>
+                          퍼팅 수 차이: {delta.total >= 0 ? '+' : ''}{delta.total}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                          성공률 차이: {delta.successRate >= 0 ? '+' : ''}{delta.successRate.toFixed(1)}%
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                          3퍼팅률 차이: {delta.threePuttRate >= 0 ? '+' : ''}{delta.threePuttRate.toFixed(1)}%
+                        </Typography>
+                      </Box>
                     </Box>
                   );
                 })()

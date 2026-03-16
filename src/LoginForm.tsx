@@ -5,15 +5,12 @@ export interface LoginFormData {
   id: string;
   passcode: string;
   sessionDate: string;
-  isAdmin: boolean;
 }
 
 interface LoginFormProps {
   onSubmit: (data: LoginFormData) => Promise<void>;
 }
 
-export const ADMIN_ID = 'csy62';
-export const ADMIN_PASSCODE = '1013';
 const today = new Date().toISOString().slice(0, 10);
 
 export default function LoginForm({ onSubmit }: LoginFormProps) {
@@ -21,8 +18,6 @@ export default function LoginForm({ onSubmit }: LoginFormProps) {
   const [passcode, setPasscode] = useState('');
   const [sessionDate, setSessionDate] = useState(today);
   const [error, setError] = useState('');
-
-  const isAdminLogin = id === ADMIN_ID;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -37,7 +32,6 @@ export default function LoginForm({ onSubmit }: LoginFormProps) {
         id: id.trim(),
         passcode: passcode.trim(),
         sessionDate,
-        isAdmin: isAdminLogin,
       });
     } catch (err) {
       setError((err as Error).message || '로그인에 실패했습니다.');
